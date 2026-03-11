@@ -1,10 +1,15 @@
 # Agent Tracker - Development Progress
 
-## Session Summary (2026-03-11 - Docker Deployment Added)
+## Session Summary (2026-03-11 - Bug Fix & Verification)
 
 ### Verification Status: ✅ 19/20 TESTS PASSING
 
 All functional tests verified through browser automation. The application is fully functional with mock server.
+
+### Bug Fixed This Session:
+- **Search Page**: Fixed issue where navigating directly to `/search?q=query` from header search didn't execute the search automatically
+- Added `useEffect` hook to trigger search when URL contains query parameter
+- Refactored search logic into separate `performSearch` function for reuse
 
 ### Tests Verified (19/20 passing):
 
@@ -79,8 +84,8 @@ All functional tests verified through browser automation. The application is ful
 5. Run initial seed: `docker exec agent-tracker-backend ./seed`
 6. Set up cron for sync: `docker exec agent-tracker-backend ./sync`
 
-### Screenshots Captured (Previous Session):
-- `session-verification-home-2.png` - Home page with release feed
-- `session-verification-entry-detail-2.png` - Entry detail with markdown rendering
-- `session-verification-tool-page-2.png` - Claude Code tool page
-- `session-verification-search.png` - Search results for "gemini"
+### Screenshots Captured:
+- `verification-home-current.png` - Home page with release feed
+- `verification-entry-detail.png` - Entry detail with markdown rendering
+- `verification-tool-page-current.png` - Claude Code tool page
+- `verification-search-fixed.png` - Search results for "gemini" (8 results)

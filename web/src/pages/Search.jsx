@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import ReleaseCard from '../components/ReleaseCard'
 
@@ -11,16 +11,18 @@ function Search() {
   const [error, setError] = useState(null)
   const [searched, setSearched] = useState(false)
 
-  const handleSearch = async (e) => {
-    e.preventDefault()
-    if (!inputValue.trim()) return
+  useEffect(() => {
+    if (query) {
+      performSearch(query)
+    }
+  }, [])
 
-    setSearchParams({ q: inputValue })
+  const performSearch = async (searchQuery) => {
     setLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(inputValue)}`)
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
       if (!response.ok) throw new Error('Search failed')
       const data = await response.json()
       setEntries(data.entries)
@@ -30,6 +32,14 @@ function Search() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSearch = async (e) => {
+    e.preventDefault()
+    if (!inputValue.trim()) return
+
+    setSearchParams({ q: inputValue })
+    performSearch(inputValue)
   }
 
   return (
