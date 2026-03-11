@@ -1,0 +1,355 @@
+<project_specification>
+  <project_name>Agent Tracker - AI Coding Tool Release Tracker</project_name>
+
+  <overview>
+    Build a release tracking application focused on AI Coding Tools. The product aggregates GitHub Releases from
+    Claude Code, Codex, Gemini CLI, and OpenCode, then exposes a clean web interface for browsing updates,
+    searching changelogs, viewing tool-specific histories, and subscribing through RSS. The MVP should favor a
+    simple, reliable architecture with React on the frontend, Go on the backend, SQLite for storage, and cron for
+    scheduled synchronization.
+  </overview>
+
+  <technology_stack>
+    <frontend>
+      <framework>React with Vite</framework>
+      <styling>Tailwind CSS</styling>
+      <state_management>React hooks with lightweight local state</state_management>
+      <routing>React Router</routing>
+      <markdown>react-markdown with remark-gfm</markdown>
+    </frontend>
+    <backend>
+      <runtime>Go with Gin</runtime>
+      <database>SQLite</database>
+      <data_access>GORM</data_access>
+      <sync>Go commands executed by cron</sync>
+      <integration>GitHub Releases API</integration>
+    </backend>
+    <communication>
+      <api>RESTful JSON endpoints</api>
+      <rss>RSS feeds served by backend</rss>
+      <health>HTTP health check endpoint</health>
+    </communication>
+  </technology_stack>
+
+  <prerequisites>
+    <environment_setup>
+      - Frontend code lives in /web
+      - Backend code lives in /server
+      - SQLite database file stored under /data
+      - GitHub token provided by GITHUB_TOKEN environment variable
+      - Docker Compose used for local or VPS deployment
+      - Host cron available for scheduled sync jobs
+    </environment_setup>
+  </prerequisites>
+
+  <core_features>
+    <release_feed>
+      - Home page shows latest releases across all tracked tools
+      - Feed sorted by published_at descending
+      - Tool filter on home page
+      - Cursor pagination for stable browsing
+      - Release cards show tool, version, title, publish time, and excerpt
+    </release_feed>
+
+    <tool_history>
+      - Dedicated page for each tool
+      - Tool page lists historical releases for one slug
+      - Tool page exposes source repository link
+      - Tool page exposes tool-specific RSS link
+    </tool_history>
+
+    <release_detail>
+      - Dedicated page for each entry
+      - Render markdown changelog body
+      - Keep original release link visible
+      - Preserve prerelease flag in metadata
+    </release_detail>
+
+    <search>
+      - Search by title and body_md
+      - MVP uses SQL LIKE query
+      - Default result size limited to 20
+      - Results sorted by published_at descending
+    </search>
+
+    <rss>
+      - Global RSS feed at /rss/all
+      - Per-tool RSS feed at /rss/:slug
+      - Feed contains latest 50 items by default
+      - Invalid slug returns 404
+    </rss>
+
+    <sync_operations>
+      - Initial full seed command for historical import
+      - Incremental sync command every 15 minutes
+      - Nightly full rescan for backfill and edited releases
+      - Draft releases skipped
+      - Prereleases stored with explicit flag
+      - Per-tool failure isolation during sync
+      - Idempotent upsert logic with content update detection
+    </sync_operations>
+
+    <operations>
+      - Health check endpoint for service and database status
+      - Persistent SQLite storage with backup and restore plan
+      - Repeatable initialization command to seed tracked tools
+    </operations>
+  </core_features>
+
+  <database_schema>
+    <tables>
+      <tools>
+        - id INTEGER PRIMARY KEY
+        - slug TEXT UNIQUE NOT NULL
+        - name TEXT NOT NULL
+        - source_type TEXT NOT NULL
+        - source_repo TEXT NOT NULL
+        - homepage TEXT
+        - is_active INTEGER NOT NULL DEFAULT 1
+        - created_at TEXT NOT NULL
+      </tools>
+
+      <entries>
+        - id INTEGER PRIMARY KEY
+        - tool_id INTEGER NOT NULL
+        - source_entry_id TEXT NOT NULL
+        - version TEXT NOT NULL
+        - title TEXT NOT NULL
+        - url TEXT NOT NULL
+        - body_md TEXT NOT NULL
+        - published_at TEXT NOT NULL
+        - source_updated_at TEXT NOT NULL
+        - content_hash TEXT NOT NULL
+        - is_prerelease INTEGER NOT NULL DEFAULT 0
+        - created_at TEXT NOT NULL
+        - updated_at TEXT NOT NULL
+        - UNIQUE(tool_id, source_entry_id)
+      </entries>
+
+      <sync_states>
+        - tool_id INTEGER PRIMARY KEY
+        - last_attempt_at TEXT
+        - last_success_at TEXT
+        - last_full_sync_at TEXT
+        - last_error TEXT
+        - etag_page_1 TEXT
+        - created_at TEXT NOT NULL
+        - updated_at TEXT NOT NULL
+      </sync_states>
+    </tables>
+  </database_schema>
+
+  <api_endpoints_summary>
+    <feed>
+      - GET /api/entries
+      - GET /api/entries/:id
+      - GET /api/tools/:slug/entries
+    </feed>
+
+    <tools>
+      - GET /api/tools
+      - GET /api/tools/:slug
+    </tools>
+
+    <search>
+      - GET /api/search?q=query
+    </search>
+
+    <rss>
+      - GET /rss/all
+      - GET /rss/:slug
+    </rss>
+
+    <health>
+      - GET /api/health
+    </health>
+
+    <internal_jobs>
+      - cmd/init-tools
+      - cmd/seed
+      - cmd/sync
+    </internal_jobs>
+  </api_endpoints_summary>
+
+  <ui_layout>
+    <main_structure>
+      - Top header with site title, tool filter, and search entry
+      - Main content area for release list or detail content
+      - Clean two-level navigation focused on content first
+      - Responsive layout for desktop and mobile
+    </main_structure>
+
+    <home_page>
+      - Aggregated release feed
+      - Filter tabs or dropdown for tracked tools
+      - Pagination controls
+      - RSS entry point for all tools
+    </home_page>
+
+    <tool_page>
+      - Tool title and repository link
+      - Tool-specific release history list
+      - Tool-specific RSS link
+      - Pagination controls
+    </tool_page>
+
+    <entry_page>
+      - Release metadata block
+      - Markdown-rendered changelog body
+      - Link to original GitHub release
+      - Adjacent navigation back to list views
+    </entry_page>
+
+    <search_page>
+      - Query input
+      - Search result list
+      - Empty state for no matches
+    </search_page>
+  </ui_layout>
+
+  <design_system>
+    <color_palette>
+      - Background: warm neutral off-white
+      - Surface: white with subtle gray border
+      - Text: dark slate
+      - Accent: restrained blue for actions and links
+      - Status: muted red for sync failures, muted green for healthy state
+    </color_palette>
+
+    <typography>
+      - Sans-serif UI font for navigation and metadata
+      - Comfortable reading width for changelog content
+      - Monospace used for versions, slugs, and technical metadata
+    </typography>
+
+    <components>
+      <release_card>
+        - Tool badge
+        - Version and title
+        - Publish time
+        - Excerpt from markdown body
+      </release_card>
+
+      <filters>
+        - Tool selector
+        - Search input
+        - Pagination controls
+      </filters>
+
+      <states>
+        - Loading skeleton for feed and detail pages
+        - Empty state for search and tool pages
+        - Error state for API failures
+      </states>
+    </components>
+
+    <animations>
+      - Minimal transitions for list loading and page navigation
+      - No noisy motion in content-heavy screens
+    </animations>
+  </design_system>
+
+  <key_interactions>
+    <browse_feed>
+      1. User opens the home page
+      2. Backend returns latest entries ordered by publish time
+      3. User filters by tool or moves through pagination
+      4. User opens one release entry for full details
+    </browse_feed>
+
+    <search_flow>
+      1. User enters keyword on search page
+      2. Frontend calls search endpoint with query string
+      3. Backend runs LIKE query on title and body_md
+      4. Matching entries render in descending publish order
+    </search_flow>
+
+    <sync_flow>
+      1. Cron triggers cmd/sync every 15 minutes
+      2. Backend fetches first pages of GitHub Releases per tool
+      3. Each release is mapped and compared by source_entry_id and content_hash
+      4. New entries insert, changed entries update, failed tools record last_error
+      5. Nightly full rescan closes gaps outside incremental window
+    </sync_flow>
+  </key_interactions>
+
+  <implementation_steps>
+    <step number="1">
+      <title>Setup Frontend, Backend, and Database Foundation</title>
+      <tasks>
+        - Initialize React with Vite in /web
+        - Initialize Go service in /server
+        - Create SQLite schema and migrations
+        - Add health check endpoint
+        - Create tracked tool configuration
+      </tasks>
+    </step>
+
+    <step number="2">
+      <title>Implement Data Initialization and Sync Pipeline</title>
+      <tasks>
+        - Build cmd/init-tools
+        - Build cmd/seed for full import
+        - Build cmd/sync for incremental synchronization
+        - Implement upsert logic and sync state recording
+        - Add GitHub token support and ETag optimization
+      </tasks>
+    </step>
+
+    <step number="3">
+      <title>Build Public Browsing Experience</title>
+      <tasks>
+        - Create home page feed
+        - Create tool detail page
+        - Create entry detail page
+        - Render markdown content safely
+        - Add RSS endpoints
+      </tasks>
+    </step>
+
+    <step number="4">
+      <title>Add Search and Improve UX</title>
+      <tasks>
+        - Implement search endpoint
+        - Build search page
+        - Add pagination and filters
+        - Improve loading, empty, and error states
+      </tasks>
+    </step>
+
+    <step number="5">
+      <title>Deployment, Backup, and Verification</title>
+      <tasks>
+        - Create Dockerfile and docker-compose.yml
+        - Mount persistent /data volume
+        - Configure host cron jobs
+        - Document backup and restore procedure
+        - Verify restart persistence and recovery flow
+      </tasks>
+    </step>
+  </implementation_steps>
+
+  <success_criteria>
+    <functionality>
+      - New release appears on the site within 15 minutes
+      - Duplicate sync runs do not create duplicate records
+      - Edited GitHub releases update existing entries
+      - Tool, detail, search, and RSS pages are accessible after deployment
+      - Single-tool sync failure does not block the rest
+    </functionality>
+
+    <user_experience>
+      - Release browsing is fast and readable
+      - Search returns relevant matches from titles and changelog bodies
+      - Tool-specific pages make historical lookup easy
+      - RSS feeds work in common feed readers
+    </user_experience>
+
+    <technical_quality>
+      - SQLite data can be backed up and restored
+      - Sync state is observable through stored status fields
+      - API and frontend structure stay simple enough for MVP maintenance
+      - Deployment works reliably on a single VPS with Docker Compose
+    </technical_quality>
+  </success_criteria>
+</project_specification>

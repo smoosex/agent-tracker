@@ -1,0 +1,28 @@
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import Header from './components/Header'
+import Home from './pages/Home'
+import Entry from './pages/Entry'
+import Tool from './pages/Tool'
+import Search from './pages/Search'
+import NotFound from './pages/NotFound'
+
+function App() {
+  return (
+    <Router>
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="max-w-4xl mx-auto px-4 py-8">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/entries/:id" element={<Entry />} />
+            <Route path="/tools/:slug" element={<Tool />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </main>
+      </div>
+    </Router>
+  )
+}
+
+export default App

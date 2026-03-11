@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #faf9f7;
+  color: #1e293b;
+}
+
+.markdown-body {
+  @apply text-text leading-relaxed;
+}
+
+.markdown-body h1 {
+  @apply text-2xl font-bold mb-4 mt-6;
+}
+
+.markdown-body h2 {
+  @apply text-xl font-semibold mb-3 mt-5;
+}
+
+.markdown-body h3 {
+  @apply text-lg font-semibold mb-2 mt-4;
+}
+
+.markdown-body p {
+  @apply mb-4;
+}
+
+.markdown-body ul {
+  @apply list-disc list-inside mb-4;
+}
+
+.markdown-body ol {
+  @apply list-decimal list-inside mb-4;
+}
+
+.markdown-body li {
+  @apply mb-1;
+}
+
+.markdown-body code {
+  @apply font-mono bg-gray-100 px-1 py-0.5 rounded text-sm;
+}
+
+.markdown-body pre {
+  @apply bg-gray-100 p-4 rounded-lg overflow-x-auto mb-4;
+}
+
+.markdown-body pre code {
+  @apply bg-transparent p-0;
+}
+
+.markdown-body a {
+  @apply text-accent hover:text-accent-hover underline;
+}
+
+.markdown-body blockquote {
+  @apply border-l-4 border-gray-300 pl-4 italic text-muted mb-4;
+}
