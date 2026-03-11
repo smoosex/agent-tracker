@@ -1,0 +1,40 @@
+services:
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: agent-tracker-backend
+    restart: unless-stopped
+    environment:
+      - DATA_DIR=/data
+      - PORT=8080
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+    volumes:
+      - agent-tracker-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: agent-tracker-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  agent-tracker-data:
+    driver: local
