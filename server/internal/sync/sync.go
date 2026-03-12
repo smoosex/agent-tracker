@@ -24,6 +24,8 @@ import (
 const (
 	openAICodexChangelogURL = "https://developers.openai.com/codex/changelog"
 	openAIBaseURL           = "https://developers.openai.com"
+	openCodeChangelogURL    = "https://opencode.ai/changelog"
+	openCodeBaseURL         = "https://opencode.ai"
 )
 
 type GitHubRelease struct {
@@ -125,7 +127,7 @@ func fetchGitHubEntries(repo, token, etag string) ([]SourceEntry, string, error)
 
 func fetchOpenAIChangelogEntries(topic, etag string) ([]SourceEntry, string, error) {
 	pageURL := fmt.Sprintf("%s?type=%s", openAICodexChangelogURL, url.QueryEscape(topic))
-	body, err := fetchOpenAIChangelogHTML(pageURL)
+	body, err := fetchHTMLViaCurl(pageURL)
 	if err != nil {
 		return nil, "", err
 	}
@@ -139,7 +141,22 @@ func fetchOpenAIChangelogEntries(topic, etag string) ([]SourceEntry, string, err
 	return entries, etag, nil
 }
 
-func fetchOpenAIChangelogHTML(pageURL string) ([]byte, error) {
+func fetchOpenCodeChangelogEntries(etag string) ([]SourceEntry, string, error) {
+	body, err := fetchHTMLViaCurl(openCodeChangelogURL)
+	if err != nil {
+		return nil, "", err
+	}
+
+	doc, err := html.Parse(strings.NewReader(string(body)))
+	if err != nil {
+		return nil, "", err
+	}
+
+	entries := extractOpenCodeChangelogEntries(doc)
+	return entries, etag, nil
+}
+
+func fetchHTMLViaCurl(pageURL string) ([]byte, error) {
 	cmd := exec.Command(
 		"curl",
 		"--compressed",
@@ -195,13 +212,60 @@ func extractOpenAIChangelogEntries(doc *html.Node, topic string) []SourceEntry {
 		}
 
 		articleNode := findFirstDescendant(node, "article")
-		bodyMD := strings.TrimSpace(renderMarkdown(articleNode))
+		bodyMD := strings.TrimSpace(renderMarkdown(articleNode, openAIBaseURL))
 
 		entries = append(entries, SourceEntry{
 			SourceEntryID:   sourceID,
 			Version:         version,
 			Title:           title,
 			URL:             fmt.Sprintf("%s?type=%s#%s", openAICodexChangelogURL, url.QueryEscape(topic), sourceID),
+			BodyMD:          bodyMD,
+			PublishedAt:     publishedAt,
+			SourceUpdatedAt: publishedAt,
+			IsPrerelease:    0,
+		})
+	})
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].PublishedAt.After(entries[j].PublishedAt)
+	})
+
+	return entries
+}
+
+func extractOpenCodeChangelogEntries(doc *html.Node) []SourceEntry {
+	var entries []SourceEntry
+
+	walkNodes(doc, func(node *html.Node) {
+		if node.Type != html.ElementNode || node.Data != "article" {
+			return
+		}
+
+		if attrValue(node, "data-component") != "release" {
+			return
+		}
+
+		versionNode := findFirstDescendantWithAttr(node, "div", "data-slot", "version")
+		linkNode := findFirstDescendant(versionNode, "a")
+		version := collapseWhitespace(nodeText(linkNode))
+		if version == "" {
+			return
+		}
+
+		timeNode := findFirstDescendant(node, "time")
+		publishedAt, err := time.Parse(time.RFC3339, attrValue(timeNode, "datetime"))
+		if err != nil {
+			return
+		}
+
+		contentNode := findFirstDescendantWithAttr(node, "div", "data-slot", "content")
+		bodyMD := strings.TrimSpace(renderMarkdown(contentNode, openCodeBaseURL))
+
+		entries = append(entries, SourceEntry{
+			SourceEntryID:   version,
+			Version:         version,
+			Title:           version,
+			URL:             normalizeURL(attrValue(linkNode, "href"), openCodeBaseURL),
 			BodyMD:          bodyMD,
 			PublishedAt:     publishedAt,
 			SourceUpdatedAt: publishedAt,
@@ -235,13 +299,13 @@ func extractVersion(node *html.Node) string {
 	return version
 }
 
-func renderMarkdown(node *html.Node) string {
+func renderMarkdown(node *html.Node, baseURL string) string {
 	if node == nil {
 		return ""
 	}
 
 	var builder strings.Builder
-	renderMarkdownChildren(&builder, node, 0)
+	renderMarkdownChildren(&builder, node, 0, baseURL)
 
 	output := strings.TrimSpace(builder.String())
 	for strings.Contains(output, "\n\n\n") {
@@ -251,13 +315,13 @@ func renderMarkdown(node *html.Node) string {
 	return output
 }
 
-func renderMarkdownChildren(builder *strings.Builder, node *html.Node, indent int) {
+func renderMarkdownChildren(builder *strings.Builder, node *html.Node, indent int, baseURL string) {
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		renderMarkdownNode(builder, child, indent)
+		renderMarkdownNode(builder, child, indent, baseURL)
 	}
 }
 
-func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int) {
+func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int, baseURL string) {
 	if node == nil {
 		return
 	}
@@ -276,23 +340,23 @@ func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int) {
 
 	switch node.Data {
 	case "article", "div", "section":
-		renderMarkdownChildren(builder, node, indent)
+		renderMarkdownChildren(builder, node, indent, baseURL)
 	case "details":
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
 			if child.Type == html.ElementNode && child.Data == "summary" {
 				continue
 			}
-			renderMarkdownNode(builder, child, indent)
+			renderMarkdownNode(builder, child, indent, baseURL)
 		}
 	case "p":
-		appendBlock(builder, renderInline(node))
+		appendBlock(builder, renderInline(node, baseURL))
 	case "h1", "h2", "h3", "h4", "h5", "h6":
 		level := int(node.Data[1] - '0')
-		appendBlock(builder, strings.Repeat("#", level)+" "+renderInline(node))
+		appendBlock(builder, strings.Repeat("#", level)+" "+renderInline(node, baseURL))
 	case "ul":
-		renderList(builder, node, indent, false)
+		renderList(builder, node, indent, false, baseURL)
 	case "ol":
-		renderList(builder, node, indent, true)
+		renderList(builder, node, indent, true, baseURL)
 	case "pre":
 		code := strings.Trim(nodeCodeText(node), "\n")
 		if code == "" {
@@ -309,7 +373,7 @@ func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int) {
 		builder.WriteString(code)
 		builder.WriteString("\n```")
 	case "blockquote":
-		quote := strings.TrimSpace(renderMarkdown(node))
+		quote := strings.TrimSpace(renderMarkdown(node, baseURL))
 		if quote == "" {
 			return
 		}
@@ -319,11 +383,11 @@ func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int) {
 		}
 		appendBlock(builder, strings.Join(lines, "\n"))
 	default:
-		renderMarkdownChildren(builder, node, indent)
+		renderMarkdownChildren(builder, node, indent, baseURL)
 	}
 }
 
-func renderList(builder *strings.Builder, node *html.Node, indent int, ordered bool) {
+func renderList(builder *strings.Builder, node *html.Node, indent int, ordered bool, baseURL string) {
 	if builder.Len() > 0 && !strings.HasSuffix(builder.String(), "\n\n") {
 		builder.WriteString("\n\n")
 	}
@@ -340,7 +404,7 @@ func renderList(builder *strings.Builder, node *html.Node, indent int, ordered b
 			index++
 		}
 
-		item := strings.TrimSpace(renderListItem(child, indent+1))
+		item := strings.TrimSpace(renderListItem(child, indent+1, baseURL))
 		if item == "" {
 			continue
 		}
@@ -366,7 +430,7 @@ func renderList(builder *strings.Builder, node *html.Node, indent int, ordered b
 	}
 }
 
-func renderListItem(node *html.Node, indent int) string {
+func renderListItem(node *html.Node, indent int, baseURL string) string {
 	var builder strings.Builder
 
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -374,15 +438,15 @@ func renderListItem(node *html.Node, indent int) string {
 			if builder.Len() > 0 && !strings.HasSuffix(builder.String(), "\n") {
 				builder.WriteString("\n")
 			}
-			renderList(&builder, child, indent, child.Data == "ol")
+			renderList(&builder, child, indent, child.Data == "ol", baseURL)
 			continue
 		}
 
 		var fragment string
 		if child.Type == html.ElementNode && (child.Data == "p" || strings.HasPrefix(child.Data, "h")) {
-			fragment = renderInline(child)
+			fragment = renderInline(child, baseURL)
 		} else {
-			fragment = strings.TrimSpace(renderInlineNode(child))
+			fragment = strings.TrimSpace(renderInlineNode(child, baseURL))
 		}
 
 		if fragment == "" {
@@ -398,20 +462,20 @@ func renderListItem(node *html.Node, indent int) string {
 	return strings.TrimSpace(builder.String())
 }
 
-func renderInline(node *html.Node) string {
+func renderInline(node *html.Node, baseURL string) string {
 	if node == nil {
 		return ""
 	}
 
 	var builder strings.Builder
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		builder.WriteString(renderInlineNode(child))
+		builder.WriteString(renderInlineNode(child, baseURL))
 	}
 
 	return collapseWhitespace(builder.String())
 }
 
-func renderInlineNode(node *html.Node) string {
+func renderInlineNode(node *html.Node, baseURL string) string {
 	if node == nil {
 		return ""
 	}
@@ -428,8 +492,8 @@ func renderInlineNode(node *html.Node) string {
 			}
 			return "`" + text + "`"
 		case "a":
-			href := normalizeURL(attrValue(node, "href"))
-			text := collapseWhitespace(renderInline(node))
+			href := normalizeURL(attrValue(node, "href"), baseURL)
+			text := collapseWhitespace(renderInline(node, baseURL))
 			if text == "" {
 				text = href
 			}
@@ -438,19 +502,19 @@ func renderInlineNode(node *html.Node) string {
 			}
 			return "[" + text + "](" + href + ")"
 		case "strong", "b":
-			text := collapseWhitespace(renderInline(node))
+			text := collapseWhitespace(renderInline(node, baseURL))
 			if text == "" {
 				return ""
 			}
 			return "**" + text + "**"
 		case "em", "i":
-			text := collapseWhitespace(renderInline(node))
+			text := collapseWhitespace(renderInline(node, baseURL))
 			if text == "" {
 				return ""
 			}
 			return "*" + text + "*"
 		case "img":
-			src := normalizeURL(attrValue(node, "src"))
+			src := normalizeURL(attrValue(node, "src"), baseURL)
 			if src == "" {
 				return ""
 			}
@@ -458,7 +522,7 @@ func renderInlineNode(node *html.Node) string {
 		case "br":
 			return "\n"
 		default:
-			return renderInline(node)
+			return renderInline(node, baseURL)
 		}
 	default:
 		return ""
@@ -522,7 +586,7 @@ func appendBlock(builder *strings.Builder, text string) {
 	builder.WriteString(text)
 }
 
-func normalizeURL(raw string) string {
+func normalizeURL(raw string, baseURL string) string {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
@@ -531,7 +595,7 @@ func normalizeURL(raw string) string {
 		return raw
 	}
 	if strings.HasPrefix(raw, "/") {
-		return openAIBaseURL + raw
+		return baseURL + raw
 	}
 	return raw
 }
@@ -554,6 +618,19 @@ func findFirstDescendant(node *html.Node, tag string) *html.Node {
 			return
 		}
 		if child.Type == html.ElementNode && child.Data == tag {
+			found = child
+		}
+	})
+	return found
+}
+
+func findFirstDescendantWithAttr(node *html.Node, tag, key, value string) *html.Node {
+	var found *html.Node
+	walkNodes(node, func(child *html.Node) {
+		if found != nil {
+			return
+		}
+		if child.Type == html.ElementNode && child.Data == tag && attrValue(child, key) == value {
 			found = child
 		}
 	})
@@ -602,6 +679,8 @@ func fetchSourceEntries(tool *models.Tool, etag string) ([]SourceEntry, string, 
 		return fetchGitHubEntries(tool.SourceRepo, os.Getenv("GITHUB_TOKEN"), etag)
 	case "openai-changelog":
 		return fetchOpenAIChangelogEntries(tool.SourceRepo, etag)
+	case "opencode-changelog":
+		return fetchOpenCodeChangelogEntries(etag)
 	default:
 		return nil, "", fmt.Errorf("unsupported source type %s", tool.SourceType)
 	}
@@ -725,7 +804,7 @@ func desiredTools() []models.Tool {
 		{Slug: "codex-app", Name: "Codex App", SourceType: "openai-changelog", SourceRepo: "codex-app", Homepage: "https://developers.openai.com/codex/app", IsActive: 1, CreatedAt: time.Now()},
 		{Slug: "codex-cli", Name: "Codex CLI", SourceType: "openai-changelog", SourceRepo: "codex-cli", Homepage: "https://developers.openai.com/codex/cli", IsActive: 1, CreatedAt: time.Now()},
 		{Slug: "gemini-cli", Name: "Gemini CLI", SourceType: "github", SourceRepo: "google-gemini/gemini-cli", Homepage: "https://github.com/google-gemini/gemini-cli", IsActive: 1, CreatedAt: time.Now()},
-		{Slug: "opencode", Name: "OpenCode", SourceType: "github", SourceRepo: "opencode-ai/opencode", Homepage: "https://github.com/opencode-ai/opencode", IsActive: 1, CreatedAt: time.Now()},
+		{Slug: "opencode", Name: "OpenCode", SourceType: "opencode-changelog", SourceRepo: "opencode", Homepage: "https://opencode.ai", IsActive: 1, CreatedAt: time.Now()},
 	}
 }
 
@@ -740,6 +819,11 @@ func InitTools() {
 		if result.RowsAffected == 0 {
 			database.DB.Create(&tool)
 			continue
+		}
+
+		if existing.SourceType != tool.SourceType || existing.SourceRepo != tool.SourceRepo {
+			database.DB.Where("tool_id = ?", existing.ID).Delete(&models.Entry{})
+			database.DB.Where("tool_id = ?", existing.ID).Delete(&models.SyncState{})
 		}
 
 		existing.Name = tool.Name

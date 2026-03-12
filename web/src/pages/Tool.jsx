@@ -18,6 +18,13 @@ function getSourceLink(tool) {
     };
   }
 
+  if (tool.source_type === "opencode-changelog") {
+    return {
+      href: "https://opencode.ai/changelog",
+      label: "Official changelog →",
+    };
+  }
+
   if (tool.homepage) {
     return {
       href: tool.homepage,

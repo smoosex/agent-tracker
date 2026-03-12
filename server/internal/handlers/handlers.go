@@ -2,13 +2,20 @@ package handlers
 
 import (
 	"net/http"
+	stdsync "sync"
 	"time"
 
 	"agent-tracker/internal/database"
 	"agent-tracker/internal/models"
+	trackerSync "agent-tracker/internal/sync"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+)
+
+var (
+	syncStateMu stdsync.Mutex
+	syncRunning bool
 )
 
 type HealthResponse struct {
@@ -338,4 +345,29 @@ func Search(c *gin.Context) {
 		"query":   q,
 		"entries": response,
 	})
+}
+
+func TriggerSync(c *gin.Context) {
+	syncStateMu.Lock()
+	if syncRunning {
+		syncStateMu.Unlock()
+		c.JSON(http.StatusConflict, gin.H{"error": "sync already in progress"})
+		return
+	}
+	syncRunning = true
+	syncStateMu.Unlock()
+
+	defer func() {
+		syncStateMu.Lock()
+		syncRunning = false
+		syncStateMu.Unlock()
+	}()
+
+	trackerSync.InitTools()
+	if err := trackerSync.SyncAll(false); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
