@@ -42,6 +42,8 @@ func main() {
 	r.GET("/api/entries", handlers.GetEntries)
 	r.GET("/api/entries/:id", handlers.GetEntry)
 	r.GET("/api/search", handlers.Search)
+	r.GET("/api/sync/events", handlers.GetSyncEvents)
+	r.GET("/api/sync/status", handlers.GetSyncStatus)
 	r.POST("/api/sync", handlers.TriggerSync)
 	r.GET("/rss/all", handlers.GetAllRSS)
 	r.GET("/rss/:slug", handlers.GetToolRSS)

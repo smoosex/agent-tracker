@@ -17,6 +17,7 @@ function Header() {
   const [searchQuery, setSearchQuery] = useState("");
   const [tools, setTools] = useState([]);
   const [syncing, setSyncing] = useState(false);
+  const [syncRunning, setSyncRunning] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
 
@@ -42,6 +43,23 @@ function Header() {
   }, []);
 
   useEffect(() => {
+    const eventSource = new EventSource(withBase("/api/sync/events"));
+
+    const handleSyncStatus = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setSyncRunning(Boolean(data.running));
+      } catch {}
+    };
+
+    eventSource.addEventListener("sync-status", handleSyncStatus);
+    return () => {
+      eventSource.removeEventListener("sync-status", handleSyncStatus);
+      eventSource.close();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!syncError && !syncMessage) return;
     const timer = window.setTimeout(() => {
       setSyncError("");
@@ -59,14 +77,21 @@ function Header() {
   };
 
   const handleSync = async () => {
+    if (syncRunning || syncing) return;
+
     try {
       setSyncing(true);
+      setSyncRunning(true);
       setSyncError("");
       setSyncMessage("");
 
       const response = await fetch(withBase("/api/sync"), { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
+        if (response.status === 409) {
+          setSyncMessage("Sync already in progress");
+          return;
+        }
         throw new Error(data.error || "Failed to sync data");
       }
 
@@ -95,13 +120,13 @@ function Header() {
                 <button
                   type="button"
                   onClick={handleSync}
-                  disabled={syncing}
+                  disabled={syncing || syncRunning}
                   className="h-8 w-8 shrink-0 rounded-lg border border-border bg-white text-muted transition-colors hover:text-accent hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  title={syncing ? "Syncing..." : "Refresh data"}
-                  aria-label={syncing ? "Syncing data" : "Refresh data"}
+                  title={syncing || syncRunning ? "Syncing..." : "Refresh data"}
+                  aria-label={syncing || syncRunning ? "Syncing data" : "Refresh data"}
                 >
                   <svg
-                    className={`mx-auto h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                    className={`mx-auto h-4 w-4 ${syncing || syncRunning ? "animate-spin" : ""}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

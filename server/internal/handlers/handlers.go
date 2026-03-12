@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,8 +19,38 @@ import (
 var (
 	syncStateMu       stdsync.Mutex
 	syncRunning       bool
+	syncStartedAt     *time.Time
 	errSyncInProgress = errors.New("sync already in progress")
+	syncEventMu       stdsync.Mutex
+	syncSubscribers   = map[chan SyncStatusResponse]struct{}{}
 )
+
+type SyncStatusResponse struct {
+	Running   bool       `json:"running"`
+	StartedAt *time.Time `json:"started_at,omitempty"`
+}
+
+func currentSyncStatus() SyncStatusResponse {
+	syncStateMu.Lock()
+	response := SyncStatusResponse{
+		Running:   syncRunning,
+		StartedAt: syncStartedAt,
+	}
+	syncStateMu.Unlock()
+
+	return response
+}
+
+func publishSyncStatus(status SyncStatusResponse) {
+	syncEventMu.Lock()
+	for subscriber := range syncSubscribers {
+		select {
+		case subscriber <- status:
+		default:
+		}
+	}
+	syncEventMu.Unlock()
+}
 
 func RunSync() (trackerSync.SyncResult, error) {
 	syncStateMu.Lock()
@@ -27,17 +58,90 @@ func RunSync() (trackerSync.SyncResult, error) {
 		syncStateMu.Unlock()
 		return trackerSync.SyncResult{}, errSyncInProgress
 	}
+	now := time.Now()
 	syncRunning = true
+	syncStartedAt = &now
 	syncStateMu.Unlock()
+	publishSyncStatus(SyncStatusResponse{
+		Running:   true,
+		StartedAt: &now,
+	})
 
 	defer func() {
 		syncStateMu.Lock()
 		syncRunning = false
+		syncStartedAt = nil
 		syncStateMu.Unlock()
+		publishSyncStatus(SyncStatusResponse{Running: false})
 	}()
 
 	trackerSync.InitTools()
 	return trackerSync.SyncAll(false)
+}
+
+func GetSyncStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, currentSyncStatus())
+}
+
+func GetSyncEvents(c *gin.Context) {
+	statuses := make(chan SyncStatusResponse, 4)
+
+	syncEventMu.Lock()
+	syncSubscribers[statuses] = struct{}{}
+	syncEventMu.Unlock()
+
+	defer func() {
+		syncEventMu.Lock()
+		delete(syncSubscribers, statuses)
+		syncEventMu.Unlock()
+		close(statuses)
+	}()
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+
+	flusher, ok := c.Writer.(http.Flusher)
+	if !ok {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	writeStatus := func(status SyncStatusResponse) bool {
+		payload, err := json.Marshal(status)
+		if err != nil {
+			return false
+		}
+		if _, err := fmt.Fprintf(c.Writer, "event: sync-status\ndata: %s\n\n", payload); err != nil {
+			return false
+		}
+		flusher.Flush()
+		return true
+	}
+
+	if !writeStatus(currentSyncStatus()) {
+		return
+	}
+
+	heartbeat := time.NewTicker(25 * time.Second)
+	defer heartbeat.Stop()
+
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case status := <-statuses:
+			if !writeStatus(status) {
+				return
+			}
+		case <-heartbeat.C:
+			if _, err := fmt.Fprint(c.Writer, ": keep-alive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
+	}
 }
 
 type HealthResponse struct {
