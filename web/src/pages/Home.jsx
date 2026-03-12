@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import ReleaseCard from "../components/ReleaseCard";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import { withBase } from "../lib/paths";
 
 function Home() {
   const [searchParams] = useSearchParams();
@@ -28,7 +29,7 @@ function Home() {
         }
         setError(null);
 
-        let url = `/api/entries?limit=20`;
+        let url = withBase(`/api/entries?limit=20`);
         if (tool) url += `&tool=${tool}`;
         if (cursorParam) url += `&cursor=${cursorParam}`;
 
@@ -73,7 +74,7 @@ function Home() {
       setSyncError("");
       setSyncMessage("");
 
-      const response = await fetch("/api/sync", { method: "POST" });
+      const response = await fetch(withBase("/api/sync"), { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(data.error || "Failed to sync data");

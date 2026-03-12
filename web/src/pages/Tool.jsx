@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import ReleaseCard from "../components/ReleaseCard";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import { withBase } from "../lib/paths";
 
 function getSourceLink(tool) {
   if (tool.source_type === "github" && tool.source_repo) {
@@ -57,7 +58,7 @@ function Tool() {
         }
         setError(null);
 
-        let url = `/api/tools/${slug}/entries?limit=20`;
+        let url = withBase(`/api/tools/${slug}/entries?limit=20`);
         if (cursorParam) url += `&cursor=${cursorParam}`;
 
         const response = await fetch(url);
@@ -152,7 +153,7 @@ function Tool() {
             </div>
           </div>
           <a
-            href={`/rss/${slug}`}
+            href={withBase(`/rss/${slug}`)}
             target="_blank"
             rel="noopener noreferrer"
             className="px-3 py-1.5 text-sm bg-gray-100 text-muted hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1"

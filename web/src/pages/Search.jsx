@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import ReleaseCard from '../components/ReleaseCard'
+import { withBase } from '../lib/paths'
 
 function Search() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -22,7 +23,7 @@ function Search() {
     setError(null)
 
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      const response = await fetch(withBase(`/api/search?q=${encodeURIComponent(searchQuery)}`))
       if (!response.ok) throw new Error('Search failed')
       const data = await response.json()
       setEntries(data.entries)

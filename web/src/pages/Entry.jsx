@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { withBase } from "../lib/paths";
 
 function Entry() {
   const { id } = useParams();
@@ -13,7 +14,7 @@ function Entry() {
     const fetchEntry = async () => {
       try {
         setLoading(true);
-        const response = await fetch(`/api/entries/${id}`);
+        const response = await fetch(withBase(`/api/entries/${id}`));
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error("Release not found");

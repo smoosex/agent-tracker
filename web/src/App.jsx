@@ -5,10 +5,11 @@ import Entry from './pages/Entry'
 import Tool from './pages/Tool'
 import Search from './pages/Search'
 import NotFound from './pages/NotFound'
+import { basePath } from './lib/paths'
 
 function App() {
   return (
-    <Router>
+    <Router basename={basePath || "/"}>
       <div className="min-h-screen bg-background">
         <Header />
         <main className="max-w-4xl mx-auto px-4 py-8">

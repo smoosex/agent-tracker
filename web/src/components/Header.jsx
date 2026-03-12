@@ -1,5 +1,6 @@
 import { Link, useSearchParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { withBase } from "../lib/paths";
 
 function Header() {
   const [searchParams] = useSearchParams();
@@ -13,7 +14,7 @@ function Header() {
 
     const fetchTools = async () => {
       try {
-        const response = await fetch("/api/tools");
+        const response = await fetch(withBase("/api/tools"));
         if (!response.ok) return;
         const data = await response.json();
         if (!cancelled) {
@@ -73,7 +74,7 @@ function Header() {
               </div>
             </form>
             <a
-              href="/rss/all"
+              href={withBase("/rss/all")}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-muted hover:text-accent transition-colors flex items-center gap-1"
