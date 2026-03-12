@@ -8,7 +8,6 @@ services:
     environment:
       - DATA_DIR=/data
       - PORT=8080
-      - GITHUB_TOKEN=${GITHUB_TOKEN}
     volumes:
       - agent-tracker-data:/data
     healthcheck:

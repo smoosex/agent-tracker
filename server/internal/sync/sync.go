@@ -9,7 +9,6 @@ import (
 	htmlpkg "html"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -60,7 +59,7 @@ func newHTTPClient() *http.Client {
 	return &http.Client{Timeout: 30 * time.Second}
 }
 
-func fetchGitHubReleases(repo, token string, etag string) ([]GitHubRelease, string, error) {
+func fetchGitHubReleases(repo string, etag string) ([]GitHubRelease, string, error) {
 	releasesURL := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=100", repo)
 
 	req, err := http.NewRequest(http.MethodGet, releasesURL, nil)
@@ -69,9 +68,6 @@ func fetchGitHubReleases(repo, token string, etag string) ([]GitHubRelease, stri
 	}
 
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if token != "" {
-		req.Header.Set("Authorization", "token "+token)
-	}
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}
@@ -98,8 +94,8 @@ func fetchGitHubReleases(repo, token string, etag string) ([]GitHubRelease, stri
 	return releases, resp.Header.Get("ETag"), nil
 }
 
-func fetchGitHubEntries(repo, token, etag string) ([]SourceEntry, string, error) {
-	releases, newEtag, err := fetchGitHubReleases(repo, token, etag)
+func fetchGitHubEntries(repo, etag string) ([]SourceEntry, string, error) {
+	releases, newEtag, err := fetchGitHubReleases(repo, etag)
 	if err != nil {
 		return nil, "", err
 	}
@@ -676,7 +672,7 @@ func boolToInt(value bool) int {
 func fetchSourceEntries(tool *models.Tool, etag string) ([]SourceEntry, string, error) {
 	switch tool.SourceType {
 	case "github":
-		return fetchGitHubEntries(tool.SourceRepo, os.Getenv("GITHUB_TOKEN"), etag)
+		return fetchGitHubEntries(tool.SourceRepo, etag)
 	case "openai-changelog":
 		return fetchOpenAIChangelogEntries(tool.SourceRepo, etag)
 	case "opencode-changelog":
