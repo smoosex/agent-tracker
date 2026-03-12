@@ -27,6 +27,9 @@ func main() {
 	}
 
 	r := gin.Default()
+	if err := r.SetTrustedProxies(nil); err != nil {
+		log.Fatal("Failed to configure trusted proxies:", err)
+	}
 
 	r.GET("/api/health", handlers.Health)
 	r.GET("/api/tools", handlers.GetTools)
