@@ -322,6 +322,10 @@ func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int, b
 		return
 	}
 
+	if shouldSkipNode(node) {
+		return
+	}
+
 	if node.Type == html.TextNode {
 		text := collapseWhitespace(htmlpkg.UnescapeString(node.Data))
 		if text != "" {
@@ -337,6 +341,8 @@ func renderMarkdownNode(builder *strings.Builder, node *html.Node, indent int, b
 	switch node.Data {
 	case "article", "div", "section":
 		renderMarkdownChildren(builder, node, indent, baseURL)
+	case "img":
+		appendBlock(builder, renderInlineNode(node, baseURL))
 	case "details":
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
 			if child.Type == html.ElementNode && child.Data == "summary" {
@@ -476,6 +482,10 @@ func renderInlineNode(node *html.Node, baseURL string) string {
 		return ""
 	}
 
+	if shouldSkipNode(node) {
+		return ""
+	}
+
 	switch node.Type {
 	case html.TextNode:
 		return htmlpkg.UnescapeString(node.Data)
@@ -523,6 +533,33 @@ func renderInlineNode(node *html.Node, baseURL string) string {
 	default:
 		return ""
 	}
+}
+
+func shouldSkipNode(node *html.Node) bool {
+	if node == nil || node.Type != html.ElementNode {
+		return false
+	}
+
+	switch node.Data {
+	case "script", "style", "template", "noscript":
+		return true
+	case "div":
+		if attrValue(node, "data-codex-screenshot-overlay") != "" {
+			return true
+		}
+	}
+
+	return hasClass(node, "hidden")
+}
+
+func hasClass(node *html.Node, want string) bool {
+	for _, className := range strings.Fields(attrValue(node, "class")) {
+		if className == want {
+			return true
+		}
+	}
+
+	return false
 }
 
 func nodeText(node *html.Node) string {

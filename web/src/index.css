@@ -56,6 +56,10 @@ body {
   @apply text-accent hover:text-accent-hover underline;
 }
 
+.markdown-body img {
+  @apply block max-w-full h-auto rounded-2xl my-6;
+}
+
 .markdown-body blockquote {
   @apply border-l-4 border-gray-300 pl-4 italic text-muted mb-4;
 }
