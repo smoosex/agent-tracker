@@ -22,6 +22,8 @@ func main() {
 	sync.InitTools()
 	log.Println("Tools initialized, starting full sync...")
 
-	sync.SyncAll(true)
+	if err := sync.SyncAll(true); err != nil {
+		log.Fatal("Full seed failed:", err)
+	}
 	log.Println("Full seed completed")
 }

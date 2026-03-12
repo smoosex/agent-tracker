@@ -19,6 +19,9 @@ func main() {
 		log.Fatal("Failed to initialize database:", err)
 	}
 
-	sync.SyncAll(false)
+	sync.InitTools()
+	if err := sync.SyncAll(false); err != nil {
+		log.Fatal("Incremental sync failed:", err)
+	}
 	log.Println("Incremental sync completed")
 }

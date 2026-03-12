@@ -6,6 +6,7 @@ import (
 
 	"agent-tracker/internal/database"
 	"agent-tracker/internal/handlers"
+	"agent-tracker/internal/sync"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,6 +20,10 @@ func main() {
 	dbPath := dataDir + "/agent-tracker.db"
 	if err := database.Init(dbPath); err != nil {
 		log.Fatal("Failed to initialize database:", err)
+	}
+
+	if err := sync.EnsureSeeded(); err != nil {
+		log.Printf("Initial sync failed: %v", err)
 	}
 
 	r := gin.Default()
@@ -35,7 +40,7 @@ func main() {
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "10001"
 	}
 
 	log.Println("Server starting on :" + port)

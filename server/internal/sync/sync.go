@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -101,9 +102,14 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 		contentHash := computeHash(r.Body)
 
 		var entry models.Entry
-		result := database.DB.Where("tool_id = ? AND source_entry_id = ?", tool.ID, sourceID).First(&entry)
+		result := database.DB.Where("tool_id = ? AND source_entry_id = ?", tool.ID, sourceID).Limit(1).Find(&entry)
+		if result.Error != nil {
+			syncState.LastError = result.Error.Error()
+			database.DB.Save(&syncState)
+			return result.Error
+		}
 
-		if result.Error == nil {
+		if result.RowsAffected > 0 {
 			if entry.ContentHash != contentHash {
 				entry.Title = r.Name
 				entry.BodyMD = r.Body
@@ -153,13 +159,24 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 	return nil
 }
 
-func SyncAll(fullSync bool) {
+func SyncAll(fullSync bool) error {
 	var tools []models.Tool
-	database.DB.Where("is_active = ?", 1).Find(&tools)
-
-	for _, tool := range tools {
-		SyncTool(&tool, fullSync)
+	if err := database.DB.Where("is_active = ?", 1).Find(&tools).Error; err != nil {
+		return err
 	}
+
+	var syncErrors []error
+	for _, tool := range tools {
+		if err := SyncTool(&tool, fullSync); err != nil {
+			syncErrors = append(syncErrors, fmt.Errorf("%s: %w", tool.Slug, err))
+		}
+	}
+
+	if len(syncErrors) > 0 {
+		return errors.Join(syncErrors...)
+	}
+
+	return nil
 }
 
 func InitTools() {
@@ -172,8 +189,24 @@ func InitTools() {
 
 	for _, t := range tools {
 		var existing models.Tool
-		if err := database.DB.Where("slug = ?", t.Slug).First(&existing).Error; err != nil {
+		result := database.DB.Where("slug = ?", t.Slug).Limit(1).Find(&existing)
+		if result.Error == nil && result.RowsAffected == 0 {
 			database.DB.Create(&t)
 		}
 	}
+}
+
+func EnsureSeeded() error {
+	InitTools()
+
+	var entryCount int64
+	if err := database.DB.Model(&models.Entry{}).Count(&entryCount).Error; err != nil {
+		return err
+	}
+
+	if entryCount > 0 {
+		return nil
+	}
+
+	return SyncAll(true)
 }
