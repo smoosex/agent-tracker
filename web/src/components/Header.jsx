@@ -1,11 +1,19 @@
-import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import {
+  Link,
+  matchPath,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { useEffect, useState } from "react";
 import { withBase } from "../lib/paths";
 
 function Header() {
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const currentTool = searchParams.get("tool") || "";
+  const toolMatch = matchPath("/tools/:slug", location.pathname);
+  const currentTool = searchParams.get("tool") || toolMatch?.params.slug || "";
   const [searchQuery, setSearchQuery] = useState("");
   const [tools, setTools] = useState([]);
 

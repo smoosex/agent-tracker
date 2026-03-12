@@ -1,14 +1,18 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useLocation, Link, useParams, useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { withBase } from "../lib/paths";
 
 function Entry() {
   const { id } = useParams();
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const currentTool = searchParams.get("tool") || "";
+  const backTo = location.state?.backTo || (currentTool ? `/?tool=${currentTool}` : "/");
 
   useEffect(() => {
     const fetchEntry = async () => {
@@ -51,7 +55,7 @@ function Entry() {
     return (
       <div className="text-center py-12">
         <p className="text-error mb-4">{error}</p>
-        <Link to="/" className="text-accent hover:text-accent-hover">
+        <Link to={backTo} className="text-accent hover:text-accent-hover">
           Back to home
         </Link>
       </div>
@@ -61,7 +65,7 @@ function Entry() {
   return (
     <div>
       <div className="mb-6">
-        <Link to="/" className="text-accent hover:text-accent-hover text-sm">
+        <Link to={backTo} className="text-accent hover:text-accent-hover text-sm">
           ← Back to releases
         </Link>
       </div>

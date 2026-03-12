@@ -176,7 +176,7 @@ function Tool() {
         <>
           <div className="space-y-4">
             {entries.map((entry) => (
-              <ReleaseCard key={entry.id} entry={entry} />
+              <ReleaseCard key={entry.id} entry={entry} currentTool={slug} />
             ))}
           </div>
 

@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -18,10 +18,16 @@ function formatDate(dateString) {
   });
 }
 
-function ReleaseCard({ entry }) {
+function ReleaseCard({ entry, currentTool = "" }) {
+  const location = useLocation();
+  const detailSearch = currentTool
+    ? `?tool=${encodeURIComponent(currentTool)}`
+    : "";
+
   return (
     <Link
-      to={`/entries/${entry.id}`}
+      to={`/entries/${entry.id}${detailSearch}`}
+      state={{ backTo: `${location.pathname}${location.search}` }}
       className="block bg-surface border border-border rounded-lg p-4 hover:border-accent hover:shadow-sm transition-all"
     >
       <div className="flex items-start justify-between gap-4">
