@@ -1,36 +1,36 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
+import { useState, useEffect } from "react";
+import { useParams, Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 function Entry() {
-  const { id } = useParams()
-  const [entry, setEntry] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const { id } = useParams();
+  const [entry, setEntry] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchEntry = async () => {
       try {
-        setLoading(true)
-        const response = await fetch(`/api/entries/${id}`)
+        setLoading(true);
+        const response = await fetch(`/api/entries/${id}`);
         if (!response.ok) {
           if (response.status === 404) {
-            throw new Error('Release not found')
+            throw new Error("Release not found");
           }
-          throw new Error('Failed to fetch entry')
+          throw new Error("Failed to fetch entry");
         }
-        const data = await response.json()
-        setEntry(data)
+        const data = await response.json();
+        setEntry(data);
       } catch (err) {
-        setError(err.message)
+        setError(err.message);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchEntry()
-  }, [id])
+    fetchEntry();
+  }, [id]);
 
   if (loading) {
     return (
@@ -43,7 +43,7 @@ function Entry() {
           <div className="h-4 w-full bg-gray-200 rounded"></div>
         </div>
       </div>
-    )
+    );
   }
 
   if (error) {
@@ -54,7 +54,7 @@ function Entry() {
           Back to home
         </Link>
       </div>
-    )
+    );
   }
 
   return (
@@ -82,27 +82,34 @@ function Entry() {
               )}
             </div>
             <h1 className="text-2xl font-bold text-text">
-              <span className="font-mono">{entry.version}</span>
+              {entry.version ? (
+                <span className="font-mono">{entry.version}</span>
+              ) : (
+                <span>{entry.title}</span>
+              )}
             </h1>
-            {entry.title && entry.title !== entry.version && (
+            {entry.version && entry.title && entry.title !== entry.version && (
               <p className="text-lg text-muted mt-1">{entry.title}</p>
             )}
           </div>
         </div>
 
         <div className="flex items-center gap-4 text-sm text-muted">
-          <span>Published {new Date(entry.published_at).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          })}</span>
+          <span>
+            Published{" "}
+            {new Date(entry.published_at).toLocaleDateString("en-US", {
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}
+          </span>
           <a
             href={entry.url}
             target="_blank"
             rel="noopener noreferrer"
             className="text-accent hover:text-accent-hover"
           >
-            View on GitHub →
+            View original source →
           </a>
         </div>
       </div>
@@ -110,12 +117,12 @@ function Entry() {
       <div className="bg-surface border border-border rounded-lg p-6">
         <article className="markdown-body">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {entry.body_md || 'No release notes available.'}
+            {entry.body_md || "No release notes available."}
           </ReactMarkdown>
         </article>
       </div>
     </div>
-  )
+  );
 }
 
-export default Entry
+export default Entry;

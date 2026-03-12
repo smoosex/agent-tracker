@@ -1,21 +1,21 @@
-import { Link } from 'react-router-dom'
+import { Link } from "react-router-dom";
 
 function formatDate(dateString) {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now - date
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now - date;
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffHours < 1) return 'Just now'
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
 
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-  })
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+  });
 }
 
 function ReleaseCard({ entry }) {
@@ -37,8 +37,12 @@ function ReleaseCard({ entry }) {
             )}
           </div>
           <h3 className="font-semibold text-text mb-1 truncate">
-            <span className="font-mono text-sm">{entry.version}</span>
-            {entry.title && entry.title !== entry.version && (
+            {entry.version ? (
+              <span className="font-mono text-sm">{entry.version}</span>
+            ) : (
+              <span>{entry.title}</span>
+            )}
+            {entry.version && entry.title && entry.title !== entry.version && (
               <span className="ml-2 text-muted font-normal">{entry.title}</span>
             )}
           </h3>
@@ -51,7 +55,7 @@ function ReleaseCard({ entry }) {
         </span>
       </div>
     </Link>
-  )
+  );
 }
 
-export default ReleaseCard
+export default ReleaseCard;

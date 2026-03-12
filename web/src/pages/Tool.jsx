@@ -1,72 +1,101 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import ReleaseCard from '../components/ReleaseCard'
-import LoadingSkeleton from '../components/LoadingSkeleton'
+import { useState, useEffect, useCallback } from "react";
+import { useParams, Link } from "react-router-dom";
+import ReleaseCard from "../components/ReleaseCard";
+import LoadingSkeleton from "../components/LoadingSkeleton";
+
+function getSourceLink(tool) {
+  if (tool.source_type === "github" && tool.source_repo) {
+    return {
+      href: `https://github.com/${tool.source_repo}`,
+      label: "GitHub Repository →",
+    };
+  }
+
+  if (tool.source_type === "openai-changelog" && tool.source_repo) {
+    return {
+      href: `https://developers.openai.com/codex/changelog?type=${tool.source_repo}`,
+      label: "Official changelog →",
+    };
+  }
+
+  if (tool.homepage) {
+    return {
+      href: tool.homepage,
+      label: "Homepage →",
+    };
+  }
+
+  return null;
+}
 
 function Tool() {
-  const { slug } = useParams()
-  const [tool, setTool] = useState(null)
-  const [entries, setEntries] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [hasMore, setHasMore] = useState(false)
-  const [cursor, setCursor] = useState(null)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const { slug } = useParams();
+  const [tool, setTool] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [cursor, setCursor] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sourceLink = tool ? getSourceLink(tool) : null;
 
-  const fetchEntries = useCallback(async (cursorParam = null, append = false) => {
-    try {
-      if (append) {
-        setLoadingMore(true)
-      } else {
-        setLoading(true)
-        setEntries([])
-      }
-      setError(null)
-
-      let url = `/api/tools/${slug}/entries?limit=20`
-      if (cursorParam) url += `&cursor=${cursorParam}`
-
-      const response = await fetch(url)
-      if (!response.ok) {
-        if (response.status === 404) {
-          throw new Error('Tool not found')
+  const fetchEntries = useCallback(
+    async (cursorParam = null, append = false) => {
+      try {
+        if (append) {
+          setLoadingMore(true);
+        } else {
+          setLoading(true);
+          setEntries([]);
         }
-        throw new Error('Failed to fetch tool')
-      }
+        setError(null);
 
-      const data = await response.json()
-      setTool(data.tool)
+        let url = `/api/tools/${slug}/entries?limit=20`;
+        if (cursorParam) url += `&cursor=${cursorParam}`;
 
-      if (append) {
-        setEntries(prev => [...prev, ...data.entries])
-      } else {
-        setEntries(data.entries)
+        const response = await fetch(url);
+        if (!response.ok) {
+          if (response.status === 404) {
+            throw new Error("Tool not found");
+          }
+          throw new Error("Failed to fetch tool");
+        }
+
+        const data = await response.json();
+        setTool(data.tool);
+
+        if (append) {
+          setEntries((prev) => [...prev, ...data.entries]);
+        } else {
+          setEntries(data.entries);
+        }
+        setHasMore(data.hasMore);
+        if (data.nextCursor) {
+          setCursor(data.nextCursor);
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
       }
-      setHasMore(data.hasMore)
-      if (data.nextCursor) {
-        setCursor(data.nextCursor)
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-      setLoadingMore(false)
-    }
-  }, [slug])
+    },
+    [slug],
+  );
 
   useEffect(() => {
-    setCursor(null)
-    fetchEntries()
-  }, [slug, fetchEntries])
+    setCursor(null);
+    fetchEntries();
+  }, [slug, fetchEntries]);
 
   const loadMore = () => {
     if (cursor && hasMore && !loadingMore) {
-      fetchEntries(cursor, true)
+      fetchEntries(cursor, true);
     }
-  }
+  };
 
   if (loading) {
-    return <LoadingSkeleton />
+    return <LoadingSkeleton />;
   }
 
   if (error) {
@@ -77,7 +106,7 @@ function Tool() {
           Back to home
         </Link>
       </div>
-    )
+    );
   }
 
   return (
@@ -93,14 +122,16 @@ function Tool() {
           <div>
             <h1 className="text-2xl font-bold text-text mb-2">{tool.name}</h1>
             <div className="flex items-center gap-4 text-sm">
-              <a
-                href={`https://github.com/${tool.source_repo}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-accent hover:text-accent-hover"
-              >
-                GitHub Repository →
-              </a>
+              {sourceLink && (
+                <a
+                  href={sourceLink.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-accent hover:text-accent-hover"
+                >
+                  {sourceLink.label}
+                </a>
+              )}
               {tool.homepage && (
                 <a
                   href={tool.homepage}
@@ -120,7 +151,7 @@ function Tool() {
             className="px-3 py-1.5 text-sm bg-gray-100 text-muted hover:bg-gray-200 rounded-lg transition-colors flex items-center gap-1"
           >
             <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-              <path d="M5 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zm3.293 4.293a1 1 0 011.414 0L12 9.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"/>
+              <path d="M5 3a1 1 0 011 1v12a1 1 0 11-2 0V4a1 1 0 011-1zm3.293 4.293a1 1 0 011.414 0L12 9.586l2.293-2.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" />
             </svg>
             RSS Feed
           </a>
@@ -136,7 +167,7 @@ function Tool() {
       ) : (
         <>
           <div className="space-y-4">
-            {entries.map(entry => (
+            {entries.map((entry) => (
               <ReleaseCard key={entry.id} entry={entry} />
             ))}
           </div>
@@ -148,14 +179,14 @@ function Tool() {
                 disabled={loadingMore}
                 className="px-6 py-2 bg-gray-100 text-text rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
-                {loadingMore ? 'Loading...' : 'Load More'}
+                {loadingMore ? "Loading..." : "Load More"}
               </button>
             </div>
           )}
         </>
       )}
     </div>
-  )
+  );
 }
 
-export default Tool
+export default Tool;

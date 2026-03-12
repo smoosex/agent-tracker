@@ -55,8 +55,11 @@ func buildRSSFeed(title string, entries []models.Entry, baseURL string) string {
 
 func GetAllRSS(c *gin.Context) {
 	var entries []models.Entry
-	if err := database.DB.Preload("Tool").
-		Order("published_at DESC").
+	if err := database.DB.Model(&models.Entry{}).
+		Joins("JOIN tools ON tools.id = entries.tool_id").
+		Where("tools.is_active = ?", 1).
+		Preload("Tool").
+		Order("entries.published_at DESC").
 		Limit(50).
 		Find(&entries).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch entries"})
@@ -73,7 +76,7 @@ func GetToolRSS(c *gin.Context) {
 	slug := c.Param("slug")
 
 	var tool models.Tool
-	if err := database.DB.Where("slug = ?", slug).First(&tool).Error; err != nil {
+	if err := database.DB.Where("slug = ? AND is_active = ?", slug, 1).First(&tool).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tool not found"})
 		return
 	}

@@ -26,8 +26,8 @@ FROM alpine:3.19
 
 WORKDIR /app
 
-# Install ca-certificates for HTTPS requests
-RUN apk --no-cache add ca-certificates tzdata
+# Install runtime dependencies for HTTPS requests and changelog fetching
+RUN apk --no-cache add ca-certificates curl tzdata
 
 # Copy binaries from builder
 COPY --from=builder /app/server .

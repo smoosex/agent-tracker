@@ -8,6 +8,7 @@ import (
 	"agent-tracker/internal/models"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type HealthResponse struct {
@@ -49,6 +50,12 @@ type ToolResponse struct {
 	IsActive   int    `json:"is_active"`
 }
 
+func activeEntriesQuery() *gorm.DB {
+	return database.DB.Model(&models.Entry{}).
+		Joins("JOIN tools ON tools.id = entries.tool_id").
+		Where("tools.is_active = ?", 1)
+}
+
 func GetTools(c *gin.Context) {
 	var tools []models.Tool
 	if err := database.DB.Where("is_active = ?", 1).Find(&tools).Error; err != nil {
@@ -75,7 +82,7 @@ func GetTools(c *gin.Context) {
 func GetTool(c *gin.Context) {
 	slug := c.Param("slug")
 	var tool models.Tool
-	if err := database.DB.Where("slug = ?", slug).First(&tool).Error; err != nil {
+	if err := database.DB.Where("slug = ? AND is_active = ?", slug, 1).First(&tool).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tool not found"})
 		return
 	}
@@ -118,13 +125,15 @@ func GetEntries(c *gin.Context) {
 	limit := 20
 
 	query := database.DB.Model(&models.Entry{}).
+		Joins("JOIN tools ON tools.id = entries.tool_id").
+		Where("tools.is_active = ?", 1).
 		Preload("Tool").
-		Order("published_at DESC").
+		Order("entries.published_at DESC").
 		Limit(limit + 1)
 
 	if toolSlug != "" {
 		var tool models.Tool
-		if err := database.DB.Where("slug = ?", toolSlug).First(&tool).Error; err == nil {
+		if err := database.DB.Where("slug = ? AND is_active = ?", toolSlug, 1).First(&tool).Error; err == nil {
 			query = query.Where("tool_id = ?", tool.ID)
 		}
 	}
@@ -132,7 +141,7 @@ func GetEntries(c *gin.Context) {
 	if cursor != "" {
 		var cursorEntry models.Entry
 		if err := database.DB.First(&cursorEntry, cursor).Error; err == nil {
-			query = query.Where("published_at < ?", cursorEntry.PublishedAt)
+			query = query.Where("entries.published_at < ?", cursorEntry.PublishedAt)
 		}
 	}
 
@@ -218,7 +227,7 @@ func GetToolEntries(c *gin.Context) {
 	limit := 20
 
 	var tool models.Tool
-	if err := database.DB.Where("slug = ?", slug).First(&tool).Error; err != nil {
+	if err := database.DB.Where("slug = ? AND is_active = ?", slug, 1).First(&tool).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "tool not found"})
 		return
 	}
@@ -291,10 +300,10 @@ func Search(c *gin.Context) {
 	}
 
 	var entries []models.Entry
-	query := database.DB.Model(&models.Entry{}).
+	query := activeEntriesQuery().
 		Preload("Tool").
-		Where("title LIKE ? OR body_md LIKE ?", "%"+q+"%", "%"+q+"%").
-		Order("published_at DESC").
+		Where("entries.title LIKE ? OR entries.body_md LIKE ?", "%"+q+"%", "%"+q+"%").
+		Order("entries.published_at DESC").
 		Limit(20)
 
 	if err := query.Find(&entries).Error; err != nil {
