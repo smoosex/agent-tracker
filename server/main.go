@@ -8,6 +8,7 @@ import (
 	"agent-tracker/internal/config"
 	"agent-tracker/internal/database"
 	"agent-tracker/internal/handlers"
+	"agent-tracker/internal/logging"
 	"agent-tracker/internal/sync"
 
 	"github.com/gin-gonic/gin"
@@ -17,6 +18,10 @@ func main() {
 	cfg, err := config.LoadFromArgs(os.Args[1:])
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
+	}
+
+	if err := logging.Init(cfg.LogPath); err != nil {
+		log.Fatal("Failed to initialize logging:", err)
 	}
 
 	dbPath := cfg.DataDir + "/agent-tracker.db"
@@ -42,8 +47,10 @@ func main() {
 	r.GET("/api/entries", handlers.GetEntries)
 	r.GET("/api/entries/:id", handlers.GetEntry)
 	r.GET("/api/search", handlers.Search)
+	r.GET("/api/logs", handlers.GetRecentLogs)
 	r.GET("/api/sync/events", handlers.GetSyncEvents)
 	r.GET("/api/sync/status", handlers.GetSyncStatus)
+	r.GET("/api/sync/failures", handlers.GetRecentSyncFailures)
 	r.POST("/api/sync", handlers.TriggerSync)
 	r.GET("/rss/all", handlers.GetAllRSS)
 	r.GET("/rss/:slug", handlers.GetToolRSS)

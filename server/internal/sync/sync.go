@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	htmlpkg "html"
+	"log"
 	"net/http"
 	"net/url"
 	"os/exec"
@@ -895,6 +896,8 @@ func upsertEntry(tool *models.Tool, item SourceEntry) error {
 }
 
 func SyncTool(tool *models.Tool, fullSync bool) error {
+	log.Printf("Syncing tool %s", tool.Slug)
+
 	var syncState models.SyncState
 	database.DB.FirstOrCreate(&syncState, models.SyncState{ToolID: tool.ID})
 
@@ -905,6 +908,7 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 	if err != nil {
 		syncState.LastError = err.Error()
 		database.DB.Save(&syncState)
+		log.Printf("Sync failed for %s: %v", tool.Slug, err)
 		return err
 	}
 
@@ -918,6 +922,7 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 		if err := upsertEntry(tool, item); err != nil {
 			syncState.LastError = err.Error()
 			database.DB.Save(&syncState)
+			log.Printf("Sync failed for %s while saving entry: %v", tool.Slug, err)
 			return err
 		}
 	}
@@ -932,8 +937,30 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 	}
 	syncState.LastError = ""
 	database.DB.Save(&syncState)
+	log.Printf("Sync completed for %s with %d entries", tool.Slug, len(items))
 
 	return nil
+}
+
+func persistSyncFailures(summary SyncResult, fullSync bool) {
+	if len(summary.Failures) == 0 {
+		return
+	}
+
+	now := time.Now()
+	records := make([]models.SyncFailureRecord, 0, len(summary.Failures))
+	for _, failure := range summary.Failures {
+		records = append(records, models.SyncFailureRecord{
+			ToolSlug:  failure.ToolSlug,
+			Error:     failure.Error,
+			FullSync:  boolToInt(fullSync),
+			CreatedAt: now,
+		})
+	}
+
+	if err := database.DB.Create(&records).Error; err != nil {
+		log.Printf("Failed to persist sync failures: %v", err)
+	}
 }
 
 func SyncAll(fullSync bool) (SyncResult, error) {
@@ -941,6 +968,8 @@ func SyncAll(fullSync bool) (SyncResult, error) {
 	if err := database.DB.Where("is_active = ?", 1).Find(&tools).Error; err != nil {
 		return SyncResult{}, err
 	}
+
+	log.Printf("Starting sync for %d tools", len(tools))
 
 	type toolSyncResult struct {
 		Slug string
@@ -983,6 +1012,13 @@ func SyncAll(fullSync bool) (SyncResult, error) {
 	sort.Slice(summary.Failures, func(i, j int) bool {
 		return summary.Failures[i].ToolSlug < summary.Failures[j].ToolSlug
 	})
+
+	persistSyncFailures(summary, fullSync)
+	if summary.HasFailures() {
+		log.Printf("Sync completed with %d failures: %s", summary.Failed, summary.FailureSummary())
+	} else {
+		log.Printf("Sync completed successfully for %d tools", summary.Succeeded)
+	}
 
 	if summary.IsCompleteFailure() {
 		return summary, fmt.Errorf("all sync tasks failed: %s", summary.FailureSummary())

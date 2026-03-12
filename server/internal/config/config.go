@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	DataDir string `toml:"data_dir"`
+	LogPath string `toml:"log_path"`
 	Port    string `toml:"port"`
 }
 
@@ -48,12 +49,18 @@ func Load(configPath string) (Config, error) {
 	if cfg.DataDir == "" {
 		return Config{}, errors.New("config.data_dir is required")
 	}
+	if cfg.LogPath == "" {
+		return Config{}, errors.New("config.log_path is required")
+	}
 	if cfg.Port == "" {
 		return Config{}, errors.New("config.port is required")
 	}
 
 	if !filepath.IsAbs(cfg.DataDir) {
 		cfg.DataDir = filepath.Clean(filepath.Join(filepath.Dir(configPath), cfg.DataDir))
+	}
+	if !filepath.IsAbs(cfg.LogPath) {
+		cfg.LogPath = filepath.Clean(filepath.Join(filepath.Dir(configPath), cfg.LogPath))
 	}
 
 	return cfg, nil

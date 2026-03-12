@@ -6,6 +6,7 @@ import (
 
 	"agent-tracker/internal/config"
 	"agent-tracker/internal/database"
+	"agent-tracker/internal/logging"
 	"agent-tracker/internal/sync"
 )
 
@@ -13,6 +14,10 @@ func main() {
 	cfg, err := config.LoadFromArgs(os.Args[1:])
 	if err != nil {
 		log.Fatal("Failed to load config:", err)
+	}
+
+	if err := logging.Init(cfg.LogPath); err != nil {
+		log.Fatal("Failed to initialize logging:", err)
 	}
 
 	dbPath := cfg.DataDir + "/agent-tracker.db"

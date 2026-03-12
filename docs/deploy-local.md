@@ -12,6 +12,7 @@
 - 前端静态文件：`/var/www/agent-tracker`
 - 配置文件：`/etc/agent-tracker/config.toml`
 - 数据目录：`/var/lib/agent-tracker`
+- 日志文件：`/var/lib/agent-tracker/logs/sync.log`
 - 服务名：`agent-tracker`
 - 前端挂载路径：`/agent-tracker/`
 
@@ -38,6 +39,7 @@ sudo mkdir -p /opt/agent-tracker /var/www/agent-tracker /etc/agent-tracker /var/
 
 ```toml
 data_dir = "/var/lib/agent-tracker"
+log_path = "/var/lib/agent-tracker/logs/sync.log"
 port = "10001"
 ```
 

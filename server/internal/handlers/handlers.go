@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	stdsync "sync"
 	"time"
 
 	"agent-tracker/internal/database"
+	"agent-tracker/internal/logging"
 	"agent-tracker/internal/models"
 	trackerSync "agent-tracker/internal/sync"
 
@@ -28,6 +30,19 @@ var (
 type SyncStatusResponse struct {
 	Running   bool       `json:"running"`
 	StartedAt *time.Time `json:"started_at,omitempty"`
+}
+
+type RecentLogsResponse struct {
+	Path  string   `json:"path"`
+	Lines []string `json:"lines"`
+}
+
+type SyncFailureResponse struct {
+	ID        uint      `json:"id"`
+	ToolSlug  string    `json:"tool_slug"`
+	Error     string    `json:"error"`
+	FullSync  int       `json:"full_sync"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func currentSyncStatus() SyncStatusResponse {
@@ -142,6 +157,60 @@ func GetSyncEvents(c *gin.Context) {
 			flusher.Flush()
 		}
 	}
+}
+
+func parseLimit(raw string, defaultValue int) int {
+	if raw == "" {
+		return defaultValue
+	}
+
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit <= 0 {
+		return defaultValue
+	}
+	if limit > 500 {
+		return 500
+	}
+
+	return limit
+}
+
+func GetRecentLogs(c *gin.Context) {
+	lines, err := logging.ReadRecentLines(parseLimit(c.Query("limit"), 200))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to read logs"})
+		return
+	}
+
+	c.JSON(http.StatusOK, RecentLogsResponse{
+		Path:  logging.Path(),
+		Lines: lines,
+	})
+}
+
+func GetRecentSyncFailures(c *gin.Context) {
+	limit := parseLimit(c.Query("limit"), 50)
+
+	var failures []models.SyncFailureRecord
+	if err := database.DB.Order("created_at desc").Limit(limit).Find(&failures).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch sync failures"})
+		return
+	}
+
+	response := make([]SyncFailureResponse, len(failures))
+	for i, failure := range failures {
+		response[i] = SyncFailureResponse{
+			ID:        failure.ID,
+			ToolSlug:  failure.ToolSlug,
+			Error:     failure.Error,
+			FullSync:  failure.FullSync,
+			CreatedAt: failure.CreatedAt,
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"failures": response,
+	})
 }
 
 type HealthResponse struct {

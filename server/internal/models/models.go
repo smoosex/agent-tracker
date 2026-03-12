@@ -42,3 +42,11 @@ type SyncState struct {
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
 }
+
+type SyncFailureRecord struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	ToolSlug  string    `gorm:"index;not null" json:"tool_slug"`
+	Error     string    `gorm:"not null" json:"error"`
+	FullSync  int       `gorm:"not null;default:0" json:"full_sync"`
+	CreatedAt time.Time `gorm:"index;not null" json:"created_at"`
+}

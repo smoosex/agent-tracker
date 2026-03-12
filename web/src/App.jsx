@@ -4,6 +4,7 @@ import Home from './pages/Home'
 import Entry from './pages/Entry'
 import Tool from './pages/Tool'
 import Search from './pages/Search'
+import Logs from './pages/Logs'
 import NotFound from './pages/NotFound'
 import { basePath } from './lib/paths'
 
@@ -18,6 +19,7 @@ function App() {
             <Route path="/entries/:id" element={<Entry />} />
             <Route path="/tools/:slug" element={<Tool />} />
             <Route path="/search" element={<Search />} />
+            <Route path="/logs" element={<Logs />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </main>

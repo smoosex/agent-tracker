@@ -181,6 +181,12 @@ function Header() {
                 </div>
               </div>
             </form>
+            <Link
+              to="/logs"
+              className="text-sm text-muted hover:text-accent transition-colors"
+            >
+              Logs
+            </Link>
             <a
               href={withBase("/rss/all")}
               target="_blank"

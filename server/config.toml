@@ -1,2 +1,3 @@
 data_dir = "./data"
+log_path = "./data/logs/sync.log"
 port = "10001"

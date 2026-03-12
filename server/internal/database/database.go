@@ -16,5 +16,5 @@ func Init(dataSourceName string) error {
 		return err
 	}
 
-	return DB.AutoMigrate(&models.Tool{}, &models.Entry{}, &models.SyncState{})
+	return DB.AutoMigrate(&models.Tool{}, &models.Entry{}, &models.SyncState{}, &models.SyncFailureRecord{})
 }
