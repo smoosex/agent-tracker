@@ -19,17 +19,21 @@ import (
 )
 
 var (
+	syncCooldown      = 10 * time.Second
 	syncStateMu       stdsync.Mutex
 	syncRunning       bool
 	syncStartedAt     *time.Time
+	syncCooldownUntil *time.Time
 	errSyncInProgress = errors.New("sync already in progress")
 	syncEventMu       stdsync.Mutex
 	syncSubscribers   = map[chan SyncStatusResponse]struct{}{}
 )
 
 type SyncStatusResponse struct {
-	Running   bool       `json:"running"`
-	StartedAt *time.Time `json:"started_at,omitempty"`
+	Running                  bool       `json:"running"`
+	StartedAt                *time.Time `json:"started_at,omitempty"`
+	CooldownUntil            *time.Time `json:"cooldown_until,omitempty"`
+	CooldownRemainingSeconds int        `json:"cooldown_remaining_seconds"`
 }
 
 type RecentLogsResponse struct {
@@ -51,6 +55,10 @@ func currentSyncStatus() SyncStatusResponse {
 		Running:   syncRunning,
 		StartedAt: syncStartedAt,
 	}
+	if syncCooldownUntil != nil && time.Now().Before(*syncCooldownUntil) {
+		response.CooldownUntil = syncCooldownUntil
+		response.CooldownRemainingSeconds = int(time.Until(*syncCooldownUntil).Seconds()) + 1
+	}
 	syncStateMu.Unlock()
 
 	return response
@@ -67,13 +75,18 @@ func publishSyncStatus(status SyncStatusResponse) {
 	syncEventMu.Unlock()
 }
 
-func RunSync() (trackerSync.SyncResult, error) {
+func RunSync() (result trackerSync.SyncResult, err error) {
 	syncStateMu.Lock()
+	now := time.Now()
 	if syncRunning {
 		syncStateMu.Unlock()
 		return trackerSync.SyncResult{}, errSyncInProgress
 	}
-	now := time.Now()
+	if syncCooldownUntil != nil && now.Before(*syncCooldownUntil) {
+		remaining := int(time.Until(*syncCooldownUntil).Seconds()) + 1
+		syncStateMu.Unlock()
+		return trackerSync.SyncResult{}, fmt.Errorf("sync cooldown active, try again in %ds", remaining)
+	}
 	syncRunning = true
 	syncStartedAt = &now
 	syncStateMu.Unlock()
@@ -86,12 +99,19 @@ func RunSync() (trackerSync.SyncResult, error) {
 		syncStateMu.Lock()
 		syncRunning = false
 		syncStartedAt = nil
+		if err == nil {
+			cooldownUntil := time.Now().Add(syncCooldown)
+			syncCooldownUntil = &cooldownUntil
+		} else {
+			syncCooldownUntil = nil
+		}
 		syncStateMu.Unlock()
-		publishSyncStatus(SyncStatusResponse{Running: false})
+		publishSyncStatus(currentSyncStatus())
 	}()
 
 	trackerSync.InitTools()
-	return trackerSync.SyncAll(false)
+	result, err = trackerSync.SyncAll(false)
+	return result, err
 }
 
 func GetSyncStatus(c *gin.Context) {
@@ -545,8 +565,25 @@ func Search(c *gin.Context) {
 func TriggerSync(c *gin.Context) {
 	result, err := RunSync()
 	if err != nil {
+		status := currentSyncStatus()
 		if errors.Is(err, errSyncInProgress) {
-			c.JSON(http.StatusConflict, gin.H{"error": "sync already in progress"})
+			c.JSON(http.StatusConflict, gin.H{
+				"error":                      "sync already in progress",
+				"running":                    status.Running,
+				"started_at":                 status.StartedAt,
+				"cooldown_until":             status.CooldownUntil,
+				"cooldown_remaining_seconds": status.CooldownRemainingSeconds,
+			})
+			return
+		}
+		if status.CooldownRemainingSeconds > 0 {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"error":                      err.Error(),
+				"running":                    status.Running,
+				"started_at":                 status.StartedAt,
+				"cooldown_until":             status.CooldownUntil,
+				"cooldown_remaining_seconds": status.CooldownRemainingSeconds,
+			})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{

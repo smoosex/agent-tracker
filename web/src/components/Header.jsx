@@ -5,7 +5,7 @@ import {
   useNavigate,
   useSearchParams,
 } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { withBase } from "../lib/paths";
 
 function Header() {
@@ -18,8 +18,26 @@ function Header() {
   const [tools, setTools] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [syncRunning, setSyncRunning] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState(0);
+  const [showRefreshTooltip, setShowRefreshTooltip] = useState(false);
   const [syncError, setSyncError] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
+
+  const applySyncStatus = useCallback((data) => {
+    setSyncRunning(Boolean(data.running));
+    setCooldownUntil(data.cooldown_until || null);
+    setCooldownRemaining(data.cooldown_remaining_seconds || 0);
+  }, []);
+
+  const fetchSyncStatus = useCallback(async () => {
+    try {
+      const response = await fetch(withBase("/api/sync/status"));
+      if (!response.ok) return;
+      const data = await response.json();
+      applySyncStatus(data);
+    } catch {}
+  }, [applySyncStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,21 +61,49 @@ function Header() {
   }, []);
 
   useEffect(() => {
+    fetchSyncStatus();
+
     const eventSource = new EventSource(withBase("/api/sync/events"));
 
     const handleSyncStatus = (event) => {
       try {
         const data = JSON.parse(event.data);
-        setSyncRunning(Boolean(data.running));
+        applySyncStatus(data);
       } catch {}
     };
 
     eventSource.addEventListener("sync-status", handleSyncStatus);
+    eventSource.onerror = () => {
+      fetchSyncStatus();
+    };
     return () => {
       eventSource.removeEventListener("sync-status", handleSyncStatus);
+      eventSource.onerror = null;
       eventSource.close();
     };
-  }, []);
+  }, [applySyncStatus, fetchSyncStatus]);
+
+  useEffect(() => {
+    if (!cooldownUntil) {
+      setCooldownRemaining(0);
+      return;
+    }
+
+    const updateCooldown = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((new Date(cooldownUntil).getTime() - Date.now()) / 1000),
+      );
+      setCooldownRemaining(remaining);
+      if (remaining === 0) {
+        setCooldownUntil(null);
+      }
+    };
+
+    updateCooldown();
+    const intervalId = window.setInterval(updateCooldown, 1000);
+    return () => window.clearInterval(intervalId);
+  }, [cooldownUntil]);
 
   useEffect(() => {
     if (!syncError && !syncMessage) return;
@@ -77,11 +123,10 @@ function Header() {
   };
 
   const handleSync = async () => {
-    if (syncRunning || syncing) return;
+    if (syncRunning || syncing || cooldownRemaining > 0) return;
 
     try {
       setSyncing(true);
-      setSyncRunning(true);
       setSyncError("");
       setSyncMessage("");
 
@@ -89,7 +134,16 @@ function Header() {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (response.status === 409) {
+          applySyncStatus(data);
           setSyncMessage("Sync already in progress");
+          return;
+        }
+        if (response.status === 429) {
+          applySyncStatus(data);
+          setSyncMessage(
+            data.error ||
+              `Please wait ${data.cooldown_remaining_seconds || 10}s before syncing again`,
+          );
           return;
         }
         throw new Error(data.error || "Failed to sync data");
@@ -101,8 +155,16 @@ function Header() {
       setSyncError(err.message);
     } finally {
       setSyncing(false);
+      fetchSyncStatus();
     }
   };
+
+  const refreshTooltip =
+    syncing || syncRunning
+      ? "Syncing..."
+      : cooldownRemaining > 0
+        ? `Please wait ${cooldownRemaining}s before refreshing again`
+        : "";
 
   return (
     <header className="bg-surface border-b border-border sticky top-0 z-10">
@@ -117,46 +179,64 @@ function Header() {
           <div className="flex items-center gap-3">
             <form onSubmit={handleSearch} className="flex items-center">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSync}
-                  disabled={syncing || syncRunning}
-                  className="h-8 w-8 shrink-0 rounded-lg border border-border bg-white text-muted transition-colors hover:text-accent hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
-                  title={syncing || syncRunning ? "Syncing..." : "Refresh data"}
-                  aria-label={syncing || syncRunning ? "Syncing data" : "Refresh data"}
+                <div
+                  className="relative flex"
+                  onMouseEnter={() => setShowRefreshTooltip(true)}
+                  onMouseLeave={() => setShowRefreshTooltip(false)}
+                  onFocus={() => setShowRefreshTooltip(true)}
+                  onBlur={() => setShowRefreshTooltip(false)}
                 >
-                  <svg
-                    className={`mx-auto h-4 w-4 ${syncing || syncRunning ? "animate-spin" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
+                  <button
+                    type="button"
+                    onClick={handleSync}
+                    disabled={syncing || syncRunning || cooldownRemaining > 0}
+                    className="h-8 w-8 shrink-0 rounded-lg border border-border bg-white text-muted transition-colors hover:text-accent hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label={
+                      syncing || syncRunning
+                        ? "Syncing data"
+                        : cooldownRemaining > 0
+                          ? `Refresh available in ${cooldownRemaining} seconds`
+                          : "Refresh data"
+                    }
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.8}
-                      d="M21 12a9 9 0 0 0-15.36-6.36L3 8"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.8}
-                      d="M3 3v5h5"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.8}
-                      d="M3 12a9 9 0 0 0 15.36 6.36L21 16"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1.8}
-                      d="M16 16h5v5"
-                    />
-                  </svg>
-                </button>
+                    <svg
+                      className={`mx-auto h-4 w-4 ${syncing || syncRunning ? "animate-spin" : ""}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M21 12a9 9 0 0 0-15.36-6.36L3 8"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M3 3v5h5"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M3 12a9 9 0 0 0 15.36 6.36L21 16"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={1.8}
+                        d="M16 16h5v5"
+                      />
+                    </svg>
+                  </button>
+                  {showRefreshTooltip && refreshTooltip && (
+                    <div className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-slate-950 px-2.5 py-1.5 text-xs text-white shadow-lg">
+                      {refreshTooltip}
+                    </div>
+                  )}
+                </div>
                 <div className="relative">
                   <input
                     type="text"
