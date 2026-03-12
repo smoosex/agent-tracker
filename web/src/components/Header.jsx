@@ -16,6 +16,9 @@ function Header() {
   const currentTool = searchParams.get("tool") || toolMatch?.params.slug || "";
   const [searchQuery, setSearchQuery] = useState("");
   const [tools, setTools] = useState([]);
+  const [syncing, setSyncing] = useState(false);
+  const [syncError, setSyncError] = useState("");
+  const [syncMessage, setSyncMessage] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -38,11 +41,41 @@ function Header() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!syncError && !syncMessage) return;
+    const timer = window.setTimeout(() => {
+      setSyncError("");
+      setSyncMessage("");
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [syncError, syncMessage]);
+
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
       navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery("");
+    }
+  };
+
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      setSyncError("");
+      setSyncMessage("");
+
+      const response = await fetch(withBase("/api/sync"), { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to sync data");
+      }
+
+      setSyncMessage("Data refreshed");
+      window.dispatchEvent(new Event("tracker:sync"));
+    } catch (err) {
+      setSyncError(err.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -58,27 +91,69 @@ function Header() {
           </Link>
           <div className="flex items-center gap-3">
             <form onSubmit={handleSearch} className="flex items-center">
-              <div className="relative">
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search releases..."
-                  className="w-48 px-3 py-1.5 pl-8 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
-                />
-                <svg
-                  className="w-4 h-4 text-muted absolute left-2.5 top-1/2 -translate-y-1/2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className="h-8 w-8 shrink-0 rounded-lg border border-border bg-white text-muted transition-colors hover:text-accent hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+                  title={syncing ? "Syncing..." : "Refresh data"}
+                  aria-label={syncing ? "Syncing data" : "Refresh data"}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  <svg
+                    className={`mx-auto h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.8}
+                      d="M21 12a9 9 0 0 0-15.36-6.36L3 8"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.8}
+                      d="M3 3v5h5"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.8}
+                      d="M3 12a9 9 0 0 0 15.36 6.36L21 16"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={1.8}
+                      d="M16 16h5v5"
+                    />
+                  </svg>
+                </button>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search releases..."
+                    className="w-48 px-3 py-1.5 pl-8 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
                   />
-                </svg>
+                  <svg
+                    className="w-4 h-4 text-muted absolute left-2.5 top-1/2 -translate-y-1/2"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
               </div>
             </form>
             <a
@@ -95,6 +170,12 @@ function Header() {
             </a>
           </div>
         </div>
+
+        {(syncError || syncMessage) && (
+          <p className={`mb-3 text-sm ${syncError ? "text-error" : "text-muted"}`}>
+            {syncError || syncMessage}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2 items-center">
           <Link

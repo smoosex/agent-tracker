@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"time"
 
 	"agent-tracker/internal/config"
 	"agent-tracker/internal/database"
@@ -27,6 +28,8 @@ func main() {
 		log.Printf("Initial sync failed: %v", err)
 	}
 
+	startSyncScheduler()
+
 	r := gin.Default()
 	if err := r.SetTrustedProxies(nil); err != nil {
 		log.Fatal("Failed to configure trusted proxies:", err)
@@ -47,4 +50,42 @@ func main() {
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
+}
+
+func startSyncScheduler() {
+	go func() {
+		for {
+			nextRun := nextScheduledSync(time.Now())
+			wait := time.Until(nextRun)
+			log.Printf("Next scheduled sync at %s", nextRun.Format(time.RFC3339))
+
+			timer := time.NewTimer(wait)
+			<-timer.C
+
+			if err := handlers.RunSync(); err != nil {
+				log.Printf("Scheduled sync failed at %s: %v", time.Now().Format(time.RFC3339), err)
+				continue
+			}
+
+			log.Printf("Scheduled sync completed at %s", time.Now().Format(time.RFC3339))
+		}
+	}()
+}
+
+func nextScheduledSync(now time.Time) time.Time {
+	location := now.Location()
+	year, month, day := now.Date()
+	candidates := []time.Time{
+		time.Date(year, month, day, 0, 0, 0, 0, location),
+		time.Date(year, month, day, 12, 0, 0, 0, location),
+		time.Date(year, month, day+1, 0, 0, 0, 0, location),
+	}
+
+	for _, candidate := range candidates {
+		if candidate.After(now) {
+			return candidate
+		}
+	}
+
+	return time.Date(year, month, day+1, 12, 0, 0, 0, location)
 }

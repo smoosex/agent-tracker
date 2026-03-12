@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	stdsync "sync"
 	"time"
@@ -14,9 +15,29 @@ import (
 )
 
 var (
-	syncStateMu stdsync.Mutex
-	syncRunning bool
+	syncStateMu       stdsync.Mutex
+	syncRunning       bool
+	errSyncInProgress = errors.New("sync already in progress")
 )
+
+func RunSync() error {
+	syncStateMu.Lock()
+	if syncRunning {
+		syncStateMu.Unlock()
+		return errSyncInProgress
+	}
+	syncRunning = true
+	syncStateMu.Unlock()
+
+	defer func() {
+		syncStateMu.Lock()
+		syncRunning = false
+		syncStateMu.Unlock()
+	}()
+
+	trackerSync.InitTools()
+	return trackerSync.SyncAll(false)
+}
 
 type HealthResponse struct {
 	Status   string `json:"status"`
@@ -348,23 +369,11 @@ func Search(c *gin.Context) {
 }
 
 func TriggerSync(c *gin.Context) {
-	syncStateMu.Lock()
-	if syncRunning {
-		syncStateMu.Unlock()
-		c.JSON(http.StatusConflict, gin.H{"error": "sync already in progress"})
-		return
-	}
-	syncRunning = true
-	syncStateMu.Unlock()
-
-	defer func() {
-		syncStateMu.Lock()
-		syncRunning = false
-		syncStateMu.Unlock()
-	}()
-
-	trackerSync.InitTools()
-	if err := trackerSync.SyncAll(false); err != nil {
+	if err := RunSync(); err != nil {
+		if errors.Is(err, errSyncInProgress) {
+			c.JSON(http.StatusConflict, gin.H{"error": "sync already in progress"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}

@@ -96,6 +96,16 @@ function Tool() {
     fetchEntries();
   }, [slug, fetchEntries]);
 
+  useEffect(() => {
+    const handleSync = () => {
+      setCursor(null);
+      fetchEntries();
+    };
+
+    window.addEventListener("tracker:sync", handleSync);
+    return () => window.removeEventListener("tracker:sync", handleSync);
+  }, [fetchEntries]);
+
   const loadMore = () => {
     if (cursor && hasMore && !loadingMore) {
       fetchEntries(cursor, true);

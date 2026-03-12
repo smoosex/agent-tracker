@@ -9,9 +9,6 @@ function Home() {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [syncError, setSyncError] = useState("");
-  const [syncMessage, setSyncMessage] = useState("");
-  const [syncing, setSyncing] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [cursor, setCursor] = useState(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -62,37 +59,25 @@ function Home() {
     fetchEntries();
   }, [tool, fetchEntries]);
 
+  useEffect(() => {
+    const handleSync = () => {
+      setCursor(null);
+      fetchEntries();
+    };
+
+    window.addEventListener("tracker:sync", handleSync);
+    return () => window.removeEventListener("tracker:sync", handleSync);
+  }, [fetchEntries]);
+
   const loadMore = () => {
     if (cursor && hasMore && !loadingMore) {
       fetchEntries(cursor, true);
     }
   };
 
-  const handleSync = async () => {
-    try {
-      setSyncing(true);
-      setSyncError("");
-      setSyncMessage("");
-
-      const response = await fetch(withBase("/api/sync"), { method: "POST" });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to sync data");
-      }
-
-      setCursor(null);
-      await fetchEntries();
-      setSyncMessage("Data refreshed");
-    } catch (err) {
-      setSyncError(err.message);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   return (
     <div>
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div className="mb-6">
         <div>
           <h1 className="text-2xl font-bold text-text">
             {tool ? `Releases for ${tool}` : "Latest Releases"}
@@ -101,17 +86,7 @@ function Home() {
             Tracking changelogs and releases from AI coding tools
           </p>
         </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {syncing ? "Syncing..." : "Refresh Data"}
-        </button>
       </div>
-
-      {syncError && <p className="text-error mb-4">{syncError}</p>}
-      {syncMessage && !syncError && <p className="text-muted mb-4">{syncMessage}</p>}
 
       {loading ? (
         <LoadingSkeleton />
