@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 
+	"agent-tracker/internal/config"
 	"agent-tracker/internal/database"
 	"agent-tracker/internal/handlers"
 	"agent-tracker/internal/sync"
@@ -12,12 +13,12 @@ import (
 )
 
 func main() {
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "./data"
+	cfg, err := config.LoadFromArgs(os.Args[1:])
+	if err != nil {
+		log.Fatal("Failed to load config:", err)
 	}
 
-	dbPath := dataDir + "/agent-tracker.db"
+	dbPath := cfg.DataDir + "/agent-tracker.db"
 	if err := database.Init(dbPath); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
@@ -42,13 +43,8 @@ func main() {
 	r.GET("/rss/all", handlers.GetAllRSS)
 	r.GET("/rss/:slug", handlers.GetToolRSS)
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "10001"
-	}
-
-	log.Println("Server starting on :" + port)
-	if err := r.Run(":" + port); err != nil {
+	log.Println("Server starting on :" + cfg.Port)
+	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatal("Failed to start server:", err)
 	}
 }

@@ -4,17 +4,18 @@ import (
 	"log"
 	"os"
 
+	"agent-tracker/internal/config"
 	"agent-tracker/internal/database"
 	"agent-tracker/internal/sync"
 )
 
 func main() {
-	dataDir := os.Getenv("DATA_DIR")
-	if dataDir == "" {
-		dataDir = "./data"
+	cfg, err := config.LoadFromArgs(os.Args[1:])
+	if err != nil {
+		log.Fatal("Failed to load config:", err)
 	}
 
-	dbPath := dataDir + "/agent-tracker.db"
+	dbPath := cfg.DataDir + "/agent-tracker.db"
 	if err := database.Init(dbPath); err != nil {
 		log.Fatal("Failed to initialize database:", err)
 	}
