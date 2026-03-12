@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	stdsync "sync"
 	"time"
@@ -20,11 +21,11 @@ var (
 	errSyncInProgress = errors.New("sync already in progress")
 )
 
-func RunSync() error {
+func RunSync() (trackerSync.SyncResult, error) {
 	syncStateMu.Lock()
 	if syncRunning {
 		syncStateMu.Unlock()
-		return errSyncInProgress
+		return trackerSync.SyncResult{}, errSyncInProgress
 	}
 	syncRunning = true
 	syncStateMu.Unlock()
@@ -369,14 +370,36 @@ func Search(c *gin.Context) {
 }
 
 func TriggerSync(c *gin.Context) {
-	if err := RunSync(); err != nil {
+	result, err := RunSync()
+	if err != nil {
 		if errors.Is(err, errSyncInProgress) {
 			c.JSON(http.StatusConflict, gin.H{"error": "sync already in progress"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error":     err.Error(),
+			"status":    "error",
+			"total":     result.Total,
+			"succeeded": result.Succeeded,
+			"failed":    result.Failed,
+			"failures":  result.Failures,
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	status := "ok"
+	message := "Data refreshed"
+	if result.HasFailures() {
+		status = "partial"
+		message = fmt.Sprintf("Data refreshed with %d failures", result.Failed)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"status":    status,
+		"message":   message,
+		"total":     result.Total,
+		"succeeded": result.Succeeded,
+		"failed":    result.Failed,
+		"failures":  result.Failures,
+	})
 }

@@ -62,8 +62,13 @@ func startSyncScheduler() {
 			timer := time.NewTimer(wait)
 			<-timer.C
 
-			if err := handlers.RunSync(); err != nil {
+			result, err := handlers.RunSync()
+			if err != nil {
 				log.Printf("Scheduled sync failed at %s: %v", time.Now().Format(time.RFC3339), err)
+				continue
+			}
+			if result.HasFailures() {
+				log.Printf("Scheduled sync completed with %d failures at %s: %s", result.Failed, time.Now().Format(time.RFC3339), result.FailureSummary())
 				continue
 			}
 

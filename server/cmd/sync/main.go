@@ -21,8 +21,13 @@ func main() {
 	}
 
 	sync.InitTools()
-	if err := sync.SyncAll(false); err != nil {
+	result, err := sync.SyncAll(false)
+	if err != nil {
 		log.Fatal("Incremental sync failed:", err)
+	}
+	if result.HasFailures() {
+		log.Printf("Incremental sync completed with %d failures: %s", result.Failed, result.FailureSummary())
+		return
 	}
 	log.Println("Incremental sync completed")
 }

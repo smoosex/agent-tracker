@@ -23,8 +23,13 @@ func main() {
 	sync.InitTools()
 	log.Println("Tools initialized, starting full sync...")
 
-	if err := sync.SyncAll(true); err != nil {
+	result, err := sync.SyncAll(true)
+	if err != nil {
 		log.Fatal("Full seed failed:", err)
+	}
+	if result.HasFailures() {
+		log.Printf("Full seed completed with %d failures: %s", result.Failed, result.FailureSummary())
+		return
 	}
 	log.Println("Full seed completed")
 }

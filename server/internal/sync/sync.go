@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	stdsync "sync"
 	"time"
 
 	"agent-tracker/internal/database"
@@ -25,7 +26,11 @@ const (
 	openAIBaseURL           = "https://developers.openai.com"
 	openCodeChangelogURL    = "https://opencode.ai/changelog"
 	openCodeBaseURL         = "https://opencode.ai"
+	maxFetchAttempts        = 3
+	retryBaseDelay          = time.Second
 )
+
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 type GitHubRelease struct {
 	ID          int64     `json:"id"`
@@ -50,48 +55,155 @@ type SourceEntry struct {
 	IsPrerelease    int
 }
 
+type SyncFailure struct {
+	ToolSlug string `json:"tool_slug"`
+	Error    string `json:"error"`
+}
+
+type SyncResult struct {
+	Total     int           `json:"total"`
+	Succeeded int           `json:"succeeded"`
+	Failed    int           `json:"failed"`
+	Failures  []SyncFailure `json:"failures,omitempty"`
+}
+
+func (r SyncResult) FailureSummary() string {
+	if len(r.Failures) == 0 {
+		return ""
+	}
+
+	parts := make([]string, 0, len(r.Failures))
+	for _, failure := range r.Failures {
+		parts = append(parts, fmt.Sprintf("%s: %s", failure.ToolSlug, failure.Error))
+	}
+
+	return strings.Join(parts, "; ")
+}
+
+func (r SyncResult) HasFailures() bool {
+	return r.Failed > 0
+}
+
+func (r SyncResult) IsCompleteFailure() bool {
+	return r.Total > 0 && r.Succeeded == 0 && r.Failed == r.Total
+}
+
+type permanentError struct {
+	err error
+}
+
+func (e *permanentError) Error() string {
+	return e.err.Error()
+}
+
+func (e *permanentError) Unwrap() error {
+	return e.err
+}
+
+func permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	return &permanentError{err: err}
+}
+
 func computeHash(body string) string {
 	hash := sha256.Sum256([]byte(body))
 	return hex.EncodeToString(hash[:])
 }
 
-func newHTTPClient() *http.Client {
-	return &http.Client{Timeout: 30 * time.Second}
+func retryDelay(attempt int) time.Duration {
+	if attempt <= 0 {
+		return retryBaseDelay
+	}
+
+	return retryBaseDelay * time.Duration(1<<(attempt-1))
+}
+
+func retry[T any](attempts int, fn func() (T, error)) (T, error) {
+	var zero T
+	var lastErr error
+
+	for attempt := 1; attempt <= attempts; attempt++ {
+		value, err := fn()
+		if err == nil {
+			return value, nil
+		}
+
+		lastErr = err
+
+		var permanentErr *permanentError
+		if errors.As(err, &permanentErr) || attempt == attempts {
+			break
+		}
+
+		time.Sleep(retryDelay(attempt))
+	}
+
+	return zero, lastErr
+}
+
+func isRetryableHTTPStatus(statusCode int) bool {
+	switch statusCode {
+	case http.StatusRequestTimeout, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return statusCode >= http.StatusInternalServerError
+	}
 }
 
 func fetchGitHubReleases(repo string, etag string) ([]GitHubRelease, string, error) {
+	type githubFetchResult struct {
+		Releases []GitHubRelease
+		ETag     string
+	}
+
 	releasesURL := fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=100", repo)
+	result, err := retry(maxFetchAttempts, func() (githubFetchResult, error) {
+		req, reqErr := http.NewRequest(http.MethodGet, releasesURL, nil)
+		if reqErr != nil {
+			return githubFetchResult{}, permanent(reqErr)
+		}
 
-	req, err := http.NewRequest(http.MethodGet, releasesURL, nil)
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
+
+		resp, doErr := httpClient.Do(req)
+		if doErr != nil {
+			return githubFetchResult{}, doErr
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusNotModified {
+			return githubFetchResult{ETag: etag}, nil
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			err := fmt.Errorf("github api returned status %d", resp.StatusCode)
+			if isRetryableHTTPStatus(resp.StatusCode) {
+				return githubFetchResult{}, err
+			}
+			return githubFetchResult{}, permanent(err)
+		}
+
+		var releases []GitHubRelease
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&releases); decodeErr != nil {
+			return githubFetchResult{}, decodeErr
+		}
+
+		return githubFetchResult{
+			Releases: releases,
+			ETag:     resp.Header.Get("ETag"),
+		}, nil
+	})
 	if err != nil {
 		return nil, "", err
 	}
 
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	if etag != "" {
-		req.Header.Set("If-None-Match", etag)
-	}
-
-	resp, err := newHTTPClient().Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotModified {
-		return nil, etag, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("github api returned status %d", resp.StatusCode)
-	}
-
-	var releases []GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
-		return nil, "", err
-	}
-
-	return releases, resp.Header.Get("ETag"), nil
+	return result.Releases, result.ETag, nil
 }
 
 func fetchGitHubEntries(repo, etag string) ([]SourceEntry, string, error) {
@@ -134,6 +246,9 @@ func fetchOpenAIChangelogEntries(topic, etag string) ([]SourceEntry, string, err
 	}
 
 	entries := extractOpenAIChangelogEntries(doc, topic)
+	if len(entries) == 0 {
+		return nil, "", fmt.Errorf("no entries parsed from %s", pageURL)
+	}
 	return entries, etag, nil
 }
 
@@ -149,6 +264,9 @@ func fetchOpenCodeChangelogEntries(etag string) ([]SourceEntry, string, error) {
 	}
 
 	entries := extractOpenCodeChangelogEntries(doc)
+	if len(entries) == 0 {
+		return nil, "", fmt.Errorf("no entries parsed from %s", openCodeChangelogURL)
+	}
 	return entries, etag, nil
 }
 
@@ -157,6 +275,13 @@ func fetchHTMLViaCurl(pageURL string) ([]byte, error) {
 		"curl",
 		"--compressed",
 		"-fsSL",
+		"--connect-timeout",
+		"10",
+		"--max-time",
+		"30",
+		"--retry",
+		"3",
+		"--retry-all-errors",
 		"-A",
 		"Mozilla/5.0",
 		"-H",
@@ -811,24 +936,59 @@ func SyncTool(tool *models.Tool, fullSync bool) error {
 	return nil
 }
 
-func SyncAll(fullSync bool) error {
+func SyncAll(fullSync bool) (SyncResult, error) {
 	var tools []models.Tool
 	if err := database.DB.Where("is_active = ?", 1).Find(&tools).Error; err != nil {
-		return err
+		return SyncResult{}, err
 	}
 
-	var syncErrors []error
+	type toolSyncResult struct {
+		Slug string
+		Err  error
+	}
+
+	results := make(chan toolSyncResult, len(tools))
+	var waitGroup stdsync.WaitGroup
+
 	for _, tool := range tools {
-		if err := SyncTool(&tool, fullSync); err != nil {
-			syncErrors = append(syncErrors, fmt.Errorf("%s: %w", tool.Slug, err))
+		tool := tool
+		waitGroup.Add(1)
+
+		go func() {
+			defer waitGroup.Done()
+			results <- toolSyncResult{
+				Slug: tool.Slug,
+				Err:  SyncTool(&tool, fullSync),
+			}
+		}()
+	}
+
+	waitGroup.Wait()
+	close(results)
+
+	summary := SyncResult{Total: len(tools)}
+	for result := range results {
+		if result.Err != nil {
+			summary.Failed++
+			summary.Failures = append(summary.Failures, SyncFailure{
+				ToolSlug: result.Slug,
+				Error:    result.Err.Error(),
+			})
+			continue
 		}
+
+		summary.Succeeded++
 	}
 
-	if len(syncErrors) > 0 {
-		return errors.Join(syncErrors...)
+	sort.Slice(summary.Failures, func(i, j int) bool {
+		return summary.Failures[i].ToolSlug < summary.Failures[j].ToolSlug
+	})
+
+	if summary.IsCompleteFailure() {
+		return summary, fmt.Errorf("all sync tasks failed: %s", summary.FailureSummary())
 	}
 
-	return nil
+	return summary, nil
 }
 
 func desiredTools() []models.Tool {
@@ -896,5 +1056,13 @@ func EnsureSeeded() error {
 		return nil
 	}
 
-	return SyncAll(true)
+	result, err := SyncAll(true)
+	if err != nil {
+		return err
+	}
+	if result.HasFailures() {
+		return nil
+	}
+
+	return nil
 }

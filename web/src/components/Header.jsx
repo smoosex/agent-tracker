@@ -70,7 +70,7 @@ function Header() {
         throw new Error(data.error || "Failed to sync data");
       }
 
-      setSyncMessage("Data refreshed");
+      setSyncMessage(data.message || "Data refreshed");
       window.dispatchEvent(new Event("tracker:sync"));
     } catch (err) {
       setSyncError(err.message);
