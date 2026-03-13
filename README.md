@@ -1,5 +1,7 @@
 # Agent Tracker
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Agent Tracker is a small web app for tracking release notes and changelogs from AI coding tools.
 
 It collects updates from GitHub Releases and official changelog pages, stores them in a local SQLite database, and exposes a simple UI for browsing recent releases, filtering by tool, searching historical entries, checking sync logs, and subscribing via RSS.

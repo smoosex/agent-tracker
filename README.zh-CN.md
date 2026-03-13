@@ -1,5 +1,7 @@
 # Agent Tracker
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 Agent Tracker 是一个用来追踪 AI 编码工具更新动态的小型 Web 应用。
 
 它会从 GitHub Release 和官方 Changelog 拉取数据，统一存进本地 SQLite，然后提供一个简单界面来查看最新更新、按工具筛选、搜索历史内容、查看同步日志，以及订阅 RSS。
