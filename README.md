@@ -15,6 +15,7 @@ It collects updates from GitHub Releases and official changelog pages, stores th
 - Codex CLI
 - Gemini CLI
 - OpenCode
+- Pi
 
 ## Project Structure
 

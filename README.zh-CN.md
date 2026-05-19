@@ -15,6 +15,7 @@ Agent Tracker 是一个用来追踪 AI 编码工具更新动态的小型 Web 应
 - Codex CLI
 - Gemini CLI
 - OpenCode
+- Pi
 
 ## 项目结构
 

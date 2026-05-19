@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -168,6 +169,9 @@ func fetchGitHubReleases(repo string, etag string) ([]GitHubRelease, string, err
 		}
 
 		req.Header.Set("Accept", "application/vnd.github.v3+json")
+		if token := os.Getenv("GITHUB_TOKEN"); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
 		if etag != "" {
 			req.Header.Set("If-None-Match", etag)
 		}
@@ -1034,6 +1038,7 @@ func desiredTools() []models.Tool {
 		{Slug: "codex-cli", Name: "Codex CLI", SourceType: "openai-changelog", SourceRepo: "codex-cli", Homepage: "https://developers.openai.com/codex/cli", IsActive: 1, CreatedAt: time.Now()},
 		{Slug: "gemini-cli", Name: "Gemini CLI", SourceType: "github", SourceRepo: "google-gemini/gemini-cli", Homepage: "https://github.com/google-gemini/gemini-cli", IsActive: 1, CreatedAt: time.Now()},
 		{Slug: "opencode", Name: "OpenCode", SourceType: "opencode-changelog", SourceRepo: "opencode", Homepage: "https://opencode.ai", IsActive: 1, CreatedAt: time.Now()},
+		{Slug: "pi", Name: "Pi", SourceType: "github", SourceRepo: "earendil-works/pi", Homepage: "https://pi.dev", IsActive: 1, CreatedAt: time.Now()},
 	}
 }
 
